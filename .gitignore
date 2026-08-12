@@ -1,0 +1,43 @@
+# ---- dependencies ----
+node_modules/
+**/node_modules/
+
+# ---- builds / caches ----
+.next/
+**/.next/
+*.tsbuildinfo
+__pycache__/
+**/__pycache__/
+*.pyc
+
+# ---- secrets & local env (NEVER commit) ----
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+
+# ---- local database ----
+*.db
+*.sqlite
+*.sqlite3
+
+# ---- business data (excluded from this public, code-only repo) ----
+Levista performance report input files from the respected applications/
+output/
+overrides.json
+**/overrides.json
+*.xlsx
+*.xls
+*.pptx
+
+# ---- backups ----
+_backup_input_cleared/
+_backup_uploads/
+
+# ---- local tooling / OS ----
+.claude/
+**/.claude/
+.DS_Store
+Thumbs.db
