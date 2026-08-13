@@ -61,6 +61,14 @@ ln -sf /etc/nginx/sites-available/levista /etc/nginx/sites-enabled/levista
 rm -f /etc/nginx/sites-enabled/default
 nginx -t && systemctl reload nginx
 
+# The cp above replaces the site file, dropping certbot's :443 block — so if a cert
+# already exists, re-run certbot to put HTTPS back. Non-fatal on a fresh box (no DNS yet).
+DOMAIN=levista.fourdm.services
+if [ -d "/etc/letsencrypt/live/$DOMAIN" ]; then
+  echo ">> https (reapply cert)"
+  certbot --nginx -d "$DOMAIN" --redirect --non-interactive 2>/dev/null || true
+fi
+
 echo ">> done -> $PUBLIC_URL"
 echo "   Load data: put exports in $APP/data/input then run:"
 echo "     sudo -u www-data $APP/.venv/bin/python -m etl.run   # (from $APP/platform)"
