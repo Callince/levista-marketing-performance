@@ -7,8 +7,10 @@ Type=simple
 User=www-data
 WorkingDirectory=/opt/levista/dashboard
 Environment=NODE_ENV=production
-Environment=PORT=3000
-ExecStart=/usr/bin/npm run start
+Environment=PORT=3001
+# Run next directly (not via npm) so systemd can stop the real process; 3001 because
+# another app already uses 3000 on the shared droplet.
+ExecStart=/opt/levista/dashboard/node_modules/.bin/next start -p 3001
 Restart=always
 RestartSec=3
 
