@@ -6,7 +6,7 @@ set -euo pipefail
 
 REPO="https://github.com/Callince/levista-marketing-performance.git"
 APP=/opt/levista
-PUBLIC_URL="${PUBLIC_URL:-http://68.183.80.200}"   # baked into the frontend at build time
+PUBLIC_URL="${PUBLIC_URL:-https://levista.fourdm.services}"   # for the final message only
 
 echo ">> packages"
 export DEBIAN_FRONTEND=noninteractive
@@ -42,7 +42,10 @@ fi
 echo ">> frontend (build)"
 cd "$APP/dashboard"
 npm ci --no-audit --no-fund
-NEXT_PUBLIC_API="$PUBLIC_URL" npm run build
+# Relative API base ("" -> same-origin /api). Host- and protocol-agnostic, so the
+# same build serves the raw IP over HTTP and the domain over HTTPS with no
+# mixed-content errors. nginx proxies /api to the backend either way.
+NEXT_PUBLIC_API="" npm run build
 
 echo ">> services"
 cp "$APP/deploy/levista-api.service" /etc/systemd/system/
