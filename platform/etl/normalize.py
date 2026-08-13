@@ -146,8 +146,10 @@ def normalize(ds: Dataset) -> pd.DataFrame:
     out["entity_type"] = sig.entity_type
     out["is_primary"] = False  # set after ingestion, once we know what the feed contains
     out["sub_platform"] = ds.sub_platform
-    if sig.ad_type:
-        out["ad_type"] = out["ad_type"].where(out["ad_type"].notna(), sig.ad_type)
+    # The uploader's ad_type (PLA/PCA) wins; otherwise fall back to the signature's.
+    ad_type = ds.ad_type or sig.ad_type
+    if ad_type:
+        out["ad_type"] = out["ad_type"].where(out["ad_type"].notna(), ad_type)
     if ds.campaign_name_hint:
         out["campaign_name"] = out["campaign_name"].where(
             out["campaign_name"].notna(), ds.campaign_name_hint)

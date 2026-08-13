@@ -313,7 +313,8 @@ def upload(background: BackgroundTasks, files: list[UploadFile],
            platform: str | None = Form(None),
            category: str | None = Form(None),
            sub_platform: str | None = Form(None),
-           report_type: str | None = Form(None)):
+           report_type: str | None = Form(None),
+           ad_type: str | None = Form(None)):
     """Save the exports, then rebuild everything from the full input folder.
 
     A full rebuild (rather than an incremental append) is deliberate: de-duplication
@@ -346,11 +347,11 @@ def upload(background: BackgroundTasks, files: list[UploadFile],
     # whole input folder, so the declaration has to sit on disk next to the files.
     # Column signatures still decide what each file actually is; this fills the gap
     # when nothing matches and flags any disagreement.
-    if platform or category or sub_platform or report_type:
+    if platform or category or sub_platform or report_type or ad_type:
         (destination / "_manifest.json").write_text(
             json.dumps({"platform": platform, "category": category,
                         "sub_platform": sub_platform, "report_type": report_type,
-                        "period": period, "files": saved}, indent=1),
+                        "ad_type": ad_type, "period": period, "files": saved}, indent=1),
             encoding="utf-8")
 
     background.add_task(_rebuild, period)

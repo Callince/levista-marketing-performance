@@ -15,7 +15,8 @@ type Recon = {
 
 const PLATFORMS = ["Amazon", "Flipkart", "Instamart", "Zepto", "BigBasket", "Blinkit"];
 const PRODUCTS = ["Cold Coffee", "Filter Coffee", "Instant Coffee"];
-const SUBPLATFORMS = ["Minutes", "National", "PLA", "PCA"];   // Flipkart / Zepto splits
+const SUBPLATFORMS = ["Minutes", "National"];   // Flipkart market
+const AD_TYPES = ["PLA", "PCA"];                 // ad type — Flipkart Minutes/National each have both; Zepto too
 const REPORTS = ["campaign", "product", "keyword", "city", "placement"];
 
 const STATUS_TONE: Record<string, string> = {
@@ -36,6 +37,7 @@ export default function DataPage() {
   const [platform, setPlatform] = useState("");
   const [category, setCategory] = useState("");
   const [subPlatform, setSubPlatform] = useState("");
+  const [adType, setAdType] = useState("");
   const [reportType, setReportType] = useState("");
   const [recon, setRecon] = useState<Recon[]>([]);
   const input = useRef<HTMLInputElement>(null);
@@ -69,6 +71,7 @@ export default function DataPage() {
     if (platform) body.append("platform", platform);
     if (category) body.append("category", category);
     if (subPlatform) body.append("sub_platform", subPlatform);
+    if (adType) body.append("ad_type", adType);
     if (reportType) body.append("report_type", reportType);
     setNotice("");
     try {
@@ -238,7 +241,7 @@ export default function DataPage() {
         </div>
 
         <div
-          className="mt-3 grid gap-3 sm:grid-cols-2"
+          className="mt-3 grid gap-3 sm:grid-cols-3"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
@@ -262,8 +265,34 @@ export default function DataPage() {
               ))}
             </div>
             <p className="mt-2 text-xs text-slate-500">
-              Flipkart Minutes/National and Zepto PLA/PCA come from the folder path, which an
-              uploaded file doesn&apos;t have — set it so the split is right.
+              Flipkart&apos;s market. Read from the folder path, which an uploaded file lacks —
+              set it so Minutes vs National is right.
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Ad type
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {["", ...AD_TYPES].map((a) => (
+                <button
+                  key={a || "auto"}
+                  type="button"
+                  onClick={() => setAdType(a)}
+                  className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+                    adType === a
+                      ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
+                      : "border border-slate-300 bg-white text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                  }`}
+                >
+                  {a || "Auto"}
+                </button>
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-slate-500">
+              PLA or PCA. Flipkart Minutes and National each have both, and Zepto too — set it
+              alongside the sub-platform.
             </p>
           </div>
 

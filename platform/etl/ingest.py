@@ -41,6 +41,7 @@ class Dataset:
     raw_rows: list = field(default_factory=list)
     category: Optional[str] = None
     sub_platform: Optional[str] = None
+    ad_type: Optional[str] = None
     campaign_name_hint: Optional[str] = None
     period_start: Optional[date] = None
     period_end: Optional[date] = None
@@ -222,6 +223,10 @@ def declared_sub_platforms(input_dir: Path) -> dict:
     return _declared(input_dir, "sub_platform")
 
 
+def declared_ad_types(input_dir: Path) -> dict:
+    return _declared(input_dir, "ad_type")
+
+
 def discover(input_dir: Path, workdir: Path) -> list[Path]:
     """All data files under input_dir, with any zips expanded into workdir."""
     files = []
@@ -247,7 +252,8 @@ def discover(input_dir: Path, workdir: Path) -> list[Path]:
 def parse_file(path: Path, seen_hashes: dict[str, Path],
                declared: str | None = None,
                declared_category: str | None = None,
-               declared_sub: str | None = None) -> list[Dataset]:
+               declared_sub: str | None = None,
+               declared_ad_type: str | None = None) -> list[Dataset]:
     """Parse one file into zero or more Datasets (one per matching sheet).
 
     `declared` is the platform the uploader chose. Column signatures remain
@@ -297,6 +303,7 @@ def parse_file(path: Path, seen_hashes: dict[str, Path],
             category=declared_category or _category_from_path(path),
             sub_platform=declared_sub or (
                 _sub_platform_from_path(path) if sig.platform == "Flipkart" else sig.ad_type),
+            ad_type=declared_ad_type,
             campaign_name_hint=hint, period_start=start, period_end=end,
             declared_platform=declared, error=mismatch,
         ))
