@@ -154,6 +154,21 @@ SIGNATURES: list[Signature] = [
             revenue="Total Revenue", roas_reported="ROI", ctr_reported="CTR",
         ),
     ),
+    Signature(
+        # Flipkart PCA product report: fsn_id/fsn_name product grain with converted
+        # revenue and units, but NO ad-spend column (PCA product exports omit spend).
+        # Minutes files carry two Start/End-Time preamble rows before this header;
+        # _find_header skips them by scanning for the row that matches this signature.
+        key="flipkart_product_pca", platform="Flipkart", report_type="product",
+        entity_type="product", ad_type="PCA", orders_from_units=True,
+        required=frozenset({"fsn_id", "fsn_name", "click_total_converted_revenue", "direct revenue"}),
+        colmap=_m(
+            campaign_id="campaign_id", campaign_name="campaign_name", date="Date",
+            product_id="fsn_id", product_name="fsn_name",
+            units=["DIRECT UNITS", "INDIRECT UNITS"], revenue="click_total_converted_revenue",
+            direct_revenue="DIRECT REVENUE", indirect_revenue="INDIRECT REVENUE",
+        ),
+    ),
 
     # ---------------- Instamart ----------------
     # city / product signatures carry more required columns, so they out-rank the
