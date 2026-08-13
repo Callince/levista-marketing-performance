@@ -39,6 +39,7 @@ export default function DataPage() {
   const [subPlatform, setSubPlatform] = useState("");
   const [adType, setAdType] = useState("");
   const [reportType, setReportType] = useState("");
+  const [staged, setStaged] = useState<File[]>([]);
   const [recon, setRecon] = useState<Recon[]>([]);
   const input = useRef<HTMLInputElement>(null);
   const { available } = usePeriod();
@@ -63,10 +64,10 @@ export default function DataPage() {
     return () => clearInterval(id);
   }, [job.status, refresh]);
 
-  async function send(list: FileList | null) {
-    if (!list?.length) return;
+  async function send(list: File[]) {
+    if (!list.length) return;
     const body = new FormData();
-    Array.from(list).forEach((f) => body.append("files", f));
+    list.forEach((f) => body.append("files", f));
     if (label) body.append("period", label);
     if (platform) body.append("platform", platform);
     if (category) body.append("category", category);
@@ -78,6 +79,7 @@ export default function DataPage() {
       const res = await post<{ saved: string[]; rejected: { filename: string; reason: string }[]; job: Job }>(
         "/api/upload", body);
       setJob(res.job);
+      setStaged([]);
       setNotice(
         `Uploaded ${res.saved.length} file(s).` +
         (res.rejected.length ? ` Skipped: ${res.rejected.map((r) => r.filename).join(", ")}.` : ""));
@@ -156,7 +158,7 @@ export default function DataPage() {
         <div
           onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
           onDragLeave={() => setDragging(false)}
-          onDrop={(e) => { e.preventDefault(); setDragging(false); send(e.dataTransfer.files); }}
+          onDrop={(e) => { e.preventDefault(); setDragging(false); setStaged(Array.from(e.dataTransfer.files)); }}
           onClick={() => input.current?.click()}
           className={`cursor-pointer rounded-xl border-2 border-dashed p-8 text-center transition ${
             dragging
@@ -168,7 +170,8 @@ export default function DataPage() {
             Drop CSV, XLSX, XLS or ZIP files here, or click to choose
           </div>
           <div className="mt-1 text-xs text-slate-500">
-            Uploading reloads this month only — other months already loaded are left alone.
+            Set the platform and options below, then press Upload. Loading reloads this month
+            only — other months already loaded are left alone.
           </div>
           <input
             ref={input}
@@ -176,7 +179,7 @@ export default function DataPage() {
             multiple
             accept=".csv,.xlsx,.xls,.zip"
             className="hidden"
-            onChange={(e) => send(e.target.files)}
+            onChange={(e) => setStaged(Array.from(e.target.files ?? []))}
           />
         </div>
 
@@ -192,7 +195,11 @@ export default function DataPage() {
               <button
                 key={p || "auto"}
                 type="button"
-                onClick={() => setPlatform(p)}
+                onClick={() => {
+                  setPlatform(p);
+                  if (p !== "Flipkart") setSubPlatform("");
+                  if (p !== "Flipkart" && p !== "Zepto") setAdType("");
+                }}
                 className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
                   platform === p
                     ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
@@ -244,6 +251,7 @@ export default function DataPage() {
           className="mt-3 grid gap-3 sm:grid-cols-3"
           onClick={(e) => e.stopPropagation()}
         >
+          {platform === "Flipkart" && (
           <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
             <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
               Sub-platform
@@ -269,7 +277,9 @@ export default function DataPage() {
               set it so Minutes vs National is right.
             </p>
           </div>
+          )}
 
+          {(platform === "Flipkart" || platform === "Zepto") && (
           <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
             <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
               Ad type
@@ -295,6 +305,7 @@ export default function DataPage() {
               alongside the sub-platform.
             </p>
           </div>
+          )}
 
           <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
             <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -322,6 +333,31 @@ export default function DataPage() {
             </p>
           </div>
         </div>
+
+        {staged.length > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-emerald-300 bg-emerald-50 p-3 dark:border-emerald-900 dark:bg-emerald-950/40">
+            <span className="text-sm text-slate-700 dark:text-slate-200">
+              <b>{staged.length}</b> file(s) ready
+              {platform && ` · ${platform}`}{subPlatform && ` ${subPlatform}`}{adType && ` ${adType}`}
+              {category && ` · ${category}`}
+              <span className="ml-2 text-xs text-slate-500">
+                {staged.map((f) => f.name).join(", ").slice(0, 70)}
+              </span>
+            </span>
+            <button
+              type="button"
+              onClick={() => send(staged)}
+              disabled={job.status === "running"}
+              className="ml-auto rounded-lg bg-emerald-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+            >
+              {job.status === "running" ? "Uploading…" : `Upload ${staged.length} file(s)`}
+            </button>
+            <button type="button" onClick={() => setStaged([])}
+                    className="text-xs text-slate-500 hover:underline">
+              clear
+            </button>
+          </div>
+        )}
 
         <div className="mt-3 flex flex-wrap items-end gap-3">
           <div>
