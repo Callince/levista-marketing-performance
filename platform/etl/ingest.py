@@ -185,6 +185,30 @@ def _sub_platform_from_path(path: Path) -> Optional[str]:
     return None
 
 
+def _sub_platform_from_channel(df) -> Optional[str]:
+    """Flipkart campaign exports carry the fulfilment channel in an unnamed column —
+    HYPERLOCAL = Minutes, FLIPKART = National. Reading it lets an uploaded campaign
+    file self-classify without relying on the folder path. (Dormant rows show '0',
+    so we look for the presence of either token across the sheet.)"""
+    if df is None:
+        return None
+    vals = {str(v).strip().upper() for v in df.to_numpy().ravel()}
+    if "HYPERLOCAL" in vals:
+        return "Minutes"
+    if "FLIPKART" in vals:
+        return "National"
+    return None
+
+
+def _flipkart_sub_platform(sig, df, path) -> Optional[str]:
+    """Channel column first (self-describing), folder path as fallback."""
+    if sig.report_type == "campaign":
+        channel = _sub_platform_from_channel(df)
+        if channel:
+            return channel
+    return _sub_platform_from_path(path)
+
+
 MANIFEST = "_manifest.json"
 
 
@@ -302,7 +326,7 @@ def parse_file(path: Path, seen_hashes: dict[str, Path],
             path=path, sha256=digest, sheet_name=sheet_name, signature=sig, df=df,
             category=declared_category or _category_from_path(path),
             sub_platform=declared_sub or (
-                _sub_platform_from_path(path) if sig.platform == "Flipkart" else sig.ad_type),
+                _flipkart_sub_platform(sig, df, path) if sig.platform == "Flipkart" else sig.ad_type),
             ad_type=declared_ad_type,
             campaign_name_hint=hint, period_start=start, period_end=end,
             declared_platform=declared, error=mismatch,

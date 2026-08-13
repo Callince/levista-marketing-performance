@@ -150,6 +150,10 @@ def normalize(ds: Dataset) -> pd.DataFrame:
     ad_type = ds.ad_type or sig.ad_type
     if ad_type:
         out["ad_type"] = out["ad_type"].where(out["ad_type"].notna(), ad_type)
+    # Flipkart campaign reports spell the ad product out in full; fold to PLA/PCA so
+    # it lines up with Zepto and the Minutes/National × PLA/PCA split.
+    out["ad_type"] = out["ad_type"].replace(
+        {"Product Listing Ads": "PLA", "Product Contextual Ads": "PCA"})
     if ds.campaign_name_hint:
         out["campaign_name"] = out["campaign_name"].where(
             out["campaign_name"].notna(), ds.campaign_name_hint)
