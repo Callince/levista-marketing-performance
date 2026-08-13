@@ -216,8 +216,10 @@ SIGNATURES: list[Signature] = [
         key="zepto_campaign_pla", platform="Zepto", report_type="campaign",
         entity_type="campaign", ad_type="PLA",
         required=frozenset({"campaignname", "campaigntype", "daily_budget", "spend", "revenue", "cpc"}),
+        # CampaignType holds Zepto's bid strategy (AUCTION_UP_SELL, …), not PLA/PCA, so
+        # it is NOT mapped to ad_type — the signature's ad_type="PLA" stands. It stays in raw_records.
         colmap=_m(
-            campaign_name="CampaignName", ad_type="CampaignType", status="Status",
+            campaign_name="CampaignName", status="Status",
             atc="Atc", clicks="Clicks", cpc_reported="Cpc", cpm_reported="Cpm",
             budget="Daily_budget", impressions="Impressions", orders="Orders",
             revenue="Revenue", roas_reported="Roas", spend="Spend",
@@ -227,8 +229,9 @@ SIGNATURES: list[Signature] = [
         key="zepto_campaign_pca", platform="Zepto", report_type="campaign",
         entity_type="campaign", ad_type="PCA",
         required=frozenset({"campaignname", "campaigntype", "daily_budget", "spend", "revenue"}),
+        # CampaignType is the bid strategy, not PLA/PCA — kept out of ad_type (see PLA sig).
         colmap=_m(
-            campaign_name="CampaignName", ad_type="CampaignType", status="Status",
+            campaign_name="CampaignName", status="Status",
             atc="Atc", clicks="Clicks", cpm_reported="Cpm", budget="Daily_budget",
             impressions="Impressions", orders="Orders", revenue="Revenue",
             roas_reported="Roas", spend="Spend",

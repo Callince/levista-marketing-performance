@@ -168,10 +168,18 @@ def _period(path: Path, rows: list[list], header_row: int):
     return start, end
 
 
+# Short variant tags used in export filenames (…City Wise IC.csv). Matched only as
+# whole words so they can't fire inside "classic", "graphic", etc.
+_CATEGORY_ABBREV = {"ic": "Instant Coffee", "fc": "Filter Coffee", "cc": "Cold Coffee"}
+
+
 def _category_from_path(path: Path) -> Optional[str]:
     text = str(path).lower()
     for needle, label in CATEGORIES.items():
         if needle in text or needle.replace(" ", "") in text.replace(" ", ""):
+            return label
+    for tag, label in _CATEGORY_ABBREV.items():
+        if re.search(rf"\b{tag}\b", text):
             return label
     return None
 
