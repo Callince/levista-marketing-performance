@@ -90,7 +90,7 @@ export default function DataPage() {
     if (!list.length) return;
     const body = new FormData();
     list.forEach((f) => body.append("files", f));
-    if (label) body.append("period", label);
+    if (label) body.append("date", label);          // YYYY-MM-DD; backend derives the month
     if (platform) body.append("platform", platform);
     if (category) body.append("category", category);
     if (subPlatform) body.append("sub_platform", subPlatform);
@@ -128,7 +128,7 @@ export default function DataPage() {
   async function rebuild() {
     setNotice("");
     const body = new FormData();
-    if (label) body.append("period", label);
+    if (label) body.append("period", label.slice(0, 7));   // rebuild loads the whole month
     const res = await post<{ job: Job }>("/api/rebuild", body);
     setJob(res.job);
   }
@@ -441,19 +441,19 @@ export default function DataPage() {
 
         <div className="mt-3 flex flex-wrap items-end gap-3">
           <div>
-            <label className="block text-xs font-medium text-slate-500" htmlFor="month">
-              Which month is this data for?
+            <label className="block text-xs font-medium text-slate-500" htmlFor="uploadDate">
+              Which day is this data for?
             </label>
             <input
-              id="month"
-              type="month"
+              id="uploadDate"
+              type="date"
               value={label}
               onChange={(e) => setLabel(e.target.value)}
               className="mt-1 w-44 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900"
             />
             <p className="mt-1 max-w-[16rem] text-[11px] text-slate-400">
-              Pick the reporting month so viewers see the data under the right date. Leave blank
-              to read it from the files (Amazon, Zepto and Blinkit carry no dates — set it for those).
+              Uploading daily? Set the report&apos;s date so each day lands on the right day and
+              the month totals build up correctly. Leave blank to read the date from the files.
             </p>
           </div>
           <button

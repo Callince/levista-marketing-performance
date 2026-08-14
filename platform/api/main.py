@@ -360,7 +360,8 @@ def upload(background: BackgroundTasks, files: list[UploadFile],
            category: str | None = Form(None),
            sub_platform: str | None = Form(None),
            report_type: str | None = Form(None),
-           ad_type: str | None = Form(None)):
+           ad_type: str | None = Form(None),
+           date: str | None = Form(None)):
     """Save the exports, then rebuild everything from the full input folder.
 
     A full rebuild (rather than an incremental append) is deliberate: de-duplication
@@ -389,15 +390,19 @@ def upload(background: BackgroundTasks, files: list[UploadFile],
         destination.rmdir()
         raise HTTPException(400, {"message": "No usable files uploaded", "rejected": rejected})
 
-    # Record which platform the uploader said these came from. The ETL rescans the
-    # whole input folder, so the declaration has to sit on disk next to the files.
-    # Column signatures still decide what each file actually is; this fills the gap
-    # when nothing matches and flags any disagreement.
-    if platform or category or sub_platform or report_type or ad_type:
+    # A dated daily upload also fixes the month it loads into, so the day and the month
+    # always agree without the user setting both.
+    if date and not period and len(date) >= 7:
+        period = date[:7]
+
+    # Record what the uploader said about these files. The ETL rescans the whole input
+    # folder, so the declaration has to sit on disk next to the files. Column signatures
+    # still decide what each file actually is; this fills the gaps (date, product, …).
+    if platform or category or sub_platform or report_type or ad_type or date:
         (destination / "_manifest.json").write_text(
             json.dumps({"platform": platform, "category": category,
                         "sub_platform": sub_platform, "report_type": report_type,
-                        "ad_type": ad_type, "period": period, "files": saved}, indent=1),
+                        "ad_type": ad_type, "date": date, "period": period, "files": saved}, indent=1),
             encoding="utf-8")
 
     background.add_task(_rebuild, period)

@@ -272,6 +272,10 @@ def declared_ad_types(input_dir: Path) -> dict:
     return _declared(input_dir, "ad_type")
 
 
+def declared_dates(input_dir: Path) -> dict:
+    return _declared(input_dir, "date")
+
+
 def discover(input_dir: Path, workdir: Path) -> list[Path]:
     """All data files under input_dir, with any zips expanded into workdir."""
     files = []
@@ -298,7 +302,8 @@ def parse_file(path: Path, seen_hashes: dict[str, Path],
                declared: str | None = None,
                declared_category: str | None = None,
                declared_sub: str | None = None,
-               declared_ad_type: str | None = None) -> list[Dataset]:
+               declared_ad_type: str | None = None,
+               declared_date: str | None = None) -> list[Dataset]:
     """Parse one file into zero or more Datasets (one per matching sheet).
 
     `declared` is the platform the uploader chose. Column signatures remain
@@ -327,6 +332,15 @@ def parse_file(path: Path, seen_hashes: dict[str, Path],
         return [Dataset(path=path, sha256=digest, sheet_name="", signature=None, df=None,
                         status="failed", error=f"{type(exc).__name__}: {exc}")]
 
+    # A daily upload is dated by the user — that date wins over anything in the file,
+    # so each day's export lands on the right day even when it carries no date itself.
+    forced = None
+    if declared_date:
+        try:
+            forced = date.fromisoformat(declared_date)
+        except ValueError:
+            forced = None
+
     results, matched_any = [], False
     for sheet_name, rows in sheets.items():
         header_row, sig = _find_header(rows)
@@ -335,6 +349,8 @@ def parse_file(path: Path, seen_hashes: dict[str, Path],
         matched_any = True
         df = _frame(rows, header_row)
         start, end = _period(path, rows, header_row)
+        if forced:
+            start = end = forced
         hint = None
         if sig.campaign_name_above_header and header_row > 0:
             first = rows[header_row - 1]

@@ -14,8 +14,8 @@ from sqlalchemy import func, select, text
 
 import config
 from db.models import get_engine, init_db, performance_metrics, uploaded_files
-from etl.ingest import (declared_ad_types, declared_categories, declared_platforms,
-                        declared_sub_platforms, discover, parse_file)
+from etl.ingest import (declared_ad_types, declared_categories, declared_dates,
+                        declared_platforms, declared_sub_platforms, discover, parse_file)
 from etl.load import (load_dataset, lock_period, log, mark_primary, reset,
                       seed_platforms)
 from etl.normalize import normalize
@@ -61,6 +61,7 @@ def run(input_dir: Path | str | None = None, echo: bool = True,
         declared_cat = declared_categories(input_dir)
         declared_sub = declared_sub_platforms(input_dir)
         declared_ad = declared_ad_types(input_dir)
+        declared_date = declared_dates(input_dir)
         seen_hashes: dict = {}
         # Parse everything first: the period label has to be known before the first
         # row is written, and it is derived from the batch as a whole.
@@ -69,7 +70,8 @@ def run(input_dir: Path | str | None = None, echo: bool = True,
             for ds in parse_file(path, seen_hashes, declared.get(path.resolve()),
                                  declared_cat.get(path.resolve()),
                                  declared_sub.get(path.resolve()),
-                                 declared_ad.get(path.resolve())):
+                                 declared_ad.get(path.resolve()),
+                                 declared_date.get(path.resolve())):
                 frame = normalize(ds) if ds.status == "ok" else None
                 parsed.append((ds, frame))
 
