@@ -135,7 +135,7 @@ genuinely distinct ad products that *add* (`ADDITIVE_REPORTS`).
 |---|---|---|
 | 1 | Surface **"partial — no campaign report"** beside a total instead of showing a quietly-low number | planned |
 | 2 | Name the **Generic / all-products** bucket for GKT/Auto campaigns (were blank) | **done** |
-| 3 | Raise a **review flag** when content ≠ folder (e.g. a Zepto file in a BigBasket folder) | planned |
+| 3 | Raise a **review flag** when content ≠ folder (e.g. a Zepto file in a BigBasket folder) | **done** |
 | 4 | Keep **billed vs tracked** (overrides) visible as a completeness signal | done |
 
 ### The rules that hold it together

@@ -153,6 +153,17 @@ def _report(engine, counts):
             for name, status, error in flagged:
                 print(f"  [{status}] {name}: {error}")
 
+        # Loaded fine, but the filing looks wrong (folder/upload platform != columns).
+        misfiled = conn.execute(
+            select(uploaded_files.c.filename, uploaded_files.c.error)
+            .where(uploaded_files.c.processing_status == "ok")
+            .where(uploaded_files.c.error.isnot(None))
+        ).all()
+        if misfiled:
+            print("\n--- Review filing (loaded by columns) ---")
+            for name, error in misfiled:
+                print(f"  [flag] {name}: {error}")
+
     if config.USING_FALLBACK_DB:
         print(f"\nNOTE: no DATABASE_URL set — wrote to SQLite at {config.DATABASE_URL}."
               "\n      Copy .env.example to .env and set your Postgres URL to use Postgres.")

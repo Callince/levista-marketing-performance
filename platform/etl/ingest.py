@@ -193,6 +193,19 @@ def _sub_platform_from_path(path: Path) -> Optional[str]:
     return None
 
 
+_PLATFORM_NAMES = ("Amazon", "Flipkart", "Zepto", "Instamart", "BigBasket", "Blinkit")
+
+
+def _platform_from_path(path: Path) -> Optional[str]:
+    """The platform a file's folder implies — used only to flag misfiling, never to
+    classify (columns decide that)."""
+    low = str(path).lower()
+    for p in _PLATFORM_NAMES:
+        if p.lower() in low:
+            return p
+    return None
+
+
 def _sub_platform_from_channel(df) -> Optional[str]:
     """Flipkart campaign exports carry the fulfilment channel in an unnamed column —
     HYPERLOCAL = Minutes, FLIPKART = National. Reading it lets an uploaded campaign
@@ -330,6 +343,13 @@ def parse_file(path: Path, seen_hashes: dict[str, Path],
         if declared and declared != sig.platform:
             mismatch = (f"uploaded as {declared}, but the columns are "
                         f"{sig.platform} {sig.report_type} — using the columns")
+        else:
+            # Folder says one platform, columns say another: load by columns (correct),
+            # but flag the filing so a misplaced export is caught, not silently re-homed.
+            folder_plat = _platform_from_path(path)
+            if folder_plat and folder_plat != sig.platform:
+                mismatch = (f"filed under {folder_plat}, but the columns are "
+                            f"{sig.platform} {sig.report_type} — loaded as {sig.platform}")
         results.append(Dataset(
             path=path, sha256=digest, sheet_name=sheet_name, signature=sig, df=df,
             category=declared_category or _category_from_path(path),
