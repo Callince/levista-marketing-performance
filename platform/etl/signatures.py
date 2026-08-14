@@ -465,13 +465,33 @@ def primary_report_types(available: dict[tuple, set]) -> set[tuple]:
     """available: {(platform, sub_platform): {report_type, ...}} -> primary triples."""
     primary = set()
     for (platform, sub_platform), types in available.items():
+        chosen = None
         for candidate in PRIMARY_PRIORITY.get(platform, []):
             if candidate in types:
                 primary.add((platform, sub_platform, candidate))
+                chosen = candidate
                 break
-        for extra in ADDITIVE_REPORTS.get(platform, set()) & types:
+        extras = ADDITIVE_REPORTS.get(platform, set()) & types
+        for extra in extras:
             primary.add((platform, sub_platform, extra))
+        # Nothing preferred and nothing additive present: fall back to whatever this
+        # platform actually has. The priority list is a preference, not a requirement —
+        # treating it as one meant a platform whose only export was a keyword report
+        # (BigBasket's list is campaign/product) had no primary rows at all, so
+        # platform_summary was empty and the entire dashboard rendered blank with no
+        # error. A breakdown report under-reports the platform total, which is exactly
+        # what the `partial` flag already exists to say.
+        if not chosen and not extras and types:
+            primary.add((platform, sub_platform, _FALLBACK_ORDER(types)))
     return primary
+
+
+def _FALLBACK_ORDER(types: set) -> str:
+    """The most complete of what's available, when no preferred report was supplied."""
+    for candidate in ("campaign", "product", "city", "keyword", "placement", "category"):
+        if candidate in types:
+            return candidate
+    return sorted(types)[0]
 
 
 def detect(columns) -> Optional[Signature]:
