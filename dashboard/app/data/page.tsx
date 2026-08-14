@@ -1,17 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { FileRow, Row, get, money, num, periodName, post } from "@/lib/api";
+import { FileRow, Row, get, num, periodName, post } from "@/lib/api";
 import {
   Badge, Card, DataTable, ErrorBox, ExportButtons, Loading, usePeriod,
 } from "@/components/ui";
 
 type Job = { status: string; message: string; finished_at: string | null };
-type Recon = {
-  platform: string; tracked_spend: number; tracked_revenue: number;
-  billed_spend: number | null; billed_revenue: number | null;
-  gap_spend: number | null; gap_revenue: number | null;
-};
 type Inspected = {
   filename: string; sheet?: string | null; status: string;
   platform?: string; report_type?: string; sub_platform?: string | null;
@@ -54,14 +49,12 @@ export default function DataPage() {
   const [staged, setStaged] = useState<File[]>([]);
   const [inspected, setInspected] = useState<Inspected[] | null>(null);
   const [inspecting, setInspecting] = useState(false);
-  const [recon, setRecon] = useState<Recon[]>([]);
   const input = useRef<HTMLInputElement>(null);
   const { available } = usePeriod();
 
   const refresh = useCallback(() => {
     get<FileRow[]>("/api/files").then(setFiles).catch((e) => setError(String(e.message ?? e)));
     get<Row[]>("/api/uploads").then(setUploads).catch(() => {});
-    get<{ rows: Recon[] }>("/api/reconciliation").then((r) => setRecon(r.rows)).catch(() => {});
   }, []);
 
   useEffect(refresh, [refresh]);
@@ -491,38 +484,6 @@ export default function DataPage() {
           </p>
         )}
       </Card>
-
-      {recon.length > 0 && (
-        <Card
-          className="mb-5"
-          title="Billed vs tracked"
-          subtitle="Your billed platform total (overrides.json) against what the uploaded reports actually sum to. A gap means the campaign report was missing or incomplete — the headline uses the billed figure."
-        >
-          <DataTable
-            columns={[
-              { key: "platform", label: "Platform" },
-              { key: "billed_spend", label: "Billed Spend", align: "right", format: (v) => money(v) },
-              { key: "tracked_spend", label: "Tracked Spend", align: "right", format: (v) => money(v) },
-              {
-                key: "gap_spend", label: "Gap", align: "right",
-                format: (v) => (v === null || v === undefined ? "—" : money(v)),
-                tone: (v) => (v === null || v === undefined || Math.abs(v as number) < 1
-                  ? "text-slate-400" : "font-semibold text-amber-700 dark:text-amber-400"),
-              },
-              { key: "billed_revenue", label: "Billed Rev.", align: "right", format: (v) => money(v) },
-              { key: "tracked_revenue", label: "Tracked Rev.", align: "right", format: (v) => money(v) },
-              {
-                key: "gap_revenue", label: "Gap", align: "right",
-                format: (v) => (v === null || v === undefined ? "—" : money(v)),
-                tone: (v) => (v === null || v === undefined || Math.abs(v as number) < 1
-                  ? "text-slate-400" : "font-semibold text-amber-700 dark:text-amber-400"),
-              },
-            ]}
-            rows={recon as unknown as Row[]}
-            pageSize={10}
-          />
-        </Card>
-      )}
 
       <Card
         className="mb-5"
