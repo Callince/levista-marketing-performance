@@ -98,12 +98,18 @@ export default function DataPage() {
     if (reportType) body.append("report_type", reportType);
     setNotice("");
     try {
-      const res = await post<{ saved: string[]; rejected: { filename: string; reason: string }[]; job: Job }>(
-        "/api/upload", body);
+      const res = await post<{
+        saved: string[]; rejected: { filename: string; reason: string }[];
+        renamed?: { from: string; to: string }[]; job: Job;
+      }>("/api/upload", body);
       setJob(res.job);
       setStaged([]);
       setNotice(
-        `Uploaded ${res.saved.length} file(s).` +
+        `Uploaded ${res.saved.length} file(s)` +
+        // Files are stored under what they actually are, so say so — otherwise the
+        // name in the table looks like it came from nowhere.
+        (res.renamed?.length ? `, saved as ${res.renamed.map((r) => r.to).join(", ")}` : "") +
+        "." +
         (res.rejected.length ? ` Skipped: ${res.rejected.map((r) => r.filename).join(", ")}.` : ""));
     } catch (e) {
       setError(String((e as Error).message));

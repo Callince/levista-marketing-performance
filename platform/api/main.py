@@ -365,6 +365,49 @@ def inspect(files: list[UploadFile]):
     return {"files": out}
 
 
+def _describe_upload(path: Path, platform, category, report_type):
+    """What this file is, for naming: the uploader's choice wins, else its columns.
+
+    Only reads the columns when something is missing — the same detection the ETL
+    will do, so the name on disk matches how the file is actually loaded.
+    """
+    if path.suffix.lower() == ".zip":
+        return platform, report_type, category      # a zip holds many, don't guess
+    if platform and report_type and category:
+        return platform, report_type, category
+    try:
+        from etl.ingest import parse_file
+        for ds in parse_file(path, {}):
+            if ds.signature:
+                return (platform or ds.signature.platform,
+                        report_type or ds.signature.report_type,
+                        category or ds.category)
+    except Exception:
+        pass                                        # naming must never fail an upload
+    return platform, report_type, category
+
+
+def _rename_upload(path: Path, platform, category, report_type, date) -> Path:
+    """-> Zepto_city_Instant-Coffee_2026-08-01.xlsx (omitting whatever is unknown)."""
+    plat, report, cat = _describe_upload(path, platform, category, report_type)
+    parts = [str(p).strip().replace(" ", "-").replace("_", "-")
+             for p in (plat, report, cat, date) if p]
+    if not parts:
+        return path                                 # nothing known — keep the original
+    suffix = path.suffix.lower()
+    stem = "_".join(parts)
+    target = path.with_name(f"{stem}{suffix}")
+    n = 2
+    while target.exists():                          # several files of the same kind
+        target = path.with_name(f"{stem}-{n}{suffix}")
+        n += 1
+    try:
+        path.rename(target)
+        return target
+    except OSError:
+        return path
+
+
 @app.post("/api/upload")
 def upload(background: BackgroundTasks, files: list[UploadFile],
            period: str | None = Form(None),
@@ -385,7 +428,7 @@ def upload(background: BackgroundTasks, files: list[UploadFile],
     destination = UPLOADS / stamp
     destination.mkdir()
 
-    saved, rejected = [], []
+    saved, rejected, renames = [], [], []
     for item in files:
         suffix = Path(item.filename).suffix.lower()
         if suffix not in ALLOWED_SUFFIXES:
@@ -396,7 +439,13 @@ def upload(background: BackgroundTasks, files: list[UploadFile],
         target = destination / Path(item.filename).name
         with target.open("wb") as handle:
             shutil.copyfileobj(item.file, handle)
-        saved.append(target.name)
+        # Platform exports arrive named things like "report_102877594.xlsx" or
+        # "uy350fowetb.csv". Rename to what the file actually is, so the Data page and
+        # the folder on disk are both readable a month later.
+        final = _rename_upload(target, platform, category, report_type, date)
+        if final.name != target.name:
+            renames.append({"from": target.name, "to": final.name})
+        saved.append(final.name)
 
     if not saved:
         destination.rmdir()
@@ -421,8 +470,9 @@ def upload(background: BackgroundTasks, files: list[UploadFile],
     JOB.update(status="running",
                message=f"Processing {len(saved)} file(s)"
                        + (f" as {period}" if period else ""), finished_at=None)
-    return {"saved": saved, "rejected": rejected, "platform": platform,
-            "category": category, "sub_platform": sub_platform, "job": JOB}
+    return {"saved": saved, "rejected": rejected, "renamed": renames,
+            "platform": platform, "category": category,
+            "sub_platform": sub_platform, "job": JOB}
 
 
 @app.post("/api/data/clear")
