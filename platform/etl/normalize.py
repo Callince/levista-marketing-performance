@@ -70,7 +70,13 @@ def _safe_div(num, den, scale: float = 1.0) -> Optional[float]:
 
 
 def _infer_category(*texts) -> Optional[str]:
-    blob = " ".join(t for t in texts if t).lower()
+    # These come straight from export columns, so a missing name arrives as NaN, not
+    # None — and float('nan') is truthy, so a plain `if t` let it through and join()
+    # died on it. Numeric product codes arrive as floats too. Coerce, then filter.
+    blob = " ".join(
+        str(t) for t in texts
+        if t is not None and not (isinstance(t, float) and pd.isna(t))
+    ).lower()
     if "cold" in blob:
         return "Cold Coffee"
     if "filter" in blob or "roast" in blob or "chicory mix 80" in blob:
