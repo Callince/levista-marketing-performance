@@ -55,6 +55,9 @@ export const priorityTone = (p: string) =>
 // ---------------------------------------------------------------- types
 export type Row = Record<string, string | number | null>;
 
+/** One option in the campaign filter — spend orders the list, platform labels it. */
+export type CampaignOption = { name: string; platform: string; spend: number };
+
 export type Periods = {
   periods: string[]; latest: string | null; prior: string | null; comparable: boolean;
 };

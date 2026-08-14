@@ -3,9 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Dispatch, ReactNode, SetStateAction, createContext, useContext, useEffect, useState,
+  Dispatch, ReactNode, SetStateAction, createContext, useContext, useEffect, useMemo,
+  useRef, useState,
 } from "react";
-import { GLOSSARY, PeriodCoverage, Periods, Row, dateRange, get, periodName, roasTone } from "@/lib/api";
+import {
+  CampaignOption, GLOSSARY, PeriodCoverage, Periods, Row, compactMoney, dateRange, get,
+  periodName, roasTone,
+} from "@/lib/api";
 
 // ---------------------------------------------------------------- period context
 // Which month is on screen is shared by every page, so it lives here rather than
@@ -25,7 +29,7 @@ type PeriodState = {
   setPeriod: (p: string) => void;
   filters: GlobalFilters;
   setFilters: Dispatch<SetStateAction<GlobalFilters>>;
-  options: { platforms: string[]; categories: string[] };
+  options: { platforms: string[]; categories: string[]; campaigns: CampaignOption[] };
   /** "" when no month is loaded yet, else "&period=2026-08" for query strings. */
   query: string;
   /** period + every active global filter, ready to append to an API call. */
@@ -38,7 +42,8 @@ type PeriodState = {
 
 const PeriodContext = createContext<PeriodState>({
   period: null, prior: null, available: [], comparable: false, setPeriod: () => {},
-  filters: EMPTY, setFilters: () => {}, options: { platforms: [], categories: [] },
+  filters: EMPTY, setFilters: () => {},
+  options: { platforms: [], categories: [], campaigns: [] },
   query: "", fullQuery: "", coverage: null, days: [],
 });
 
@@ -50,7 +55,10 @@ function PeriodProvider({ children }: { children: ReactNode }) {
   });
   const [period, setPeriod] = useState<string | null>(null);
   const [filters, setFilters] = useState<GlobalFilters>(EMPTY);
-  const [options, setOptions] = useState({ platforms: [] as string[], categories: [] as string[] });
+  const [options, setOptions] = useState({
+    platforms: [] as string[], categories: [] as string[],
+    campaigns: [] as CampaignOption[],
+  });
   const [coverage, setCoverage] = useState<PeriodCoverage | null>(null);
   const [days, setDays] = useState<string[]>([]);
 
@@ -58,9 +66,18 @@ function PeriodProvider({ children }: { children: ReactNode }) {
     get<Periods>("/api/periods")
       .then((p) => { setState(p); setPeriod((current) => current ?? p.latest); })
       .catch(() => {});
-    get<{ platforms: string[]; categories: string[] }>("/api/filters")
-      .then(setOptions).catch(() => {});
   }, []);
+
+  // Campaign options follow the chosen platform/product/month, so the list only ever
+  // offers campaigns that exist in the current view.
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (filters.platform) params.set("platform", filters.platform);
+    if (filters.category) params.set("category", filters.category);
+    if (period) params.set("period", period);
+    get<{ platforms: string[]; categories: string[]; campaigns: CampaignOption[] }>(
+      `/api/filters?${params}`).then(setOptions).catch(() => {});
+  }, [filters.platform, filters.category, period]);
 
   // The real dates the chosen month covers (a 10-day report is not the whole month),
   // and the individual report days available for the day filter.
@@ -422,6 +439,137 @@ function Toggle({ label, active, onClick, clearable = true }: {
   );
 }
 
+
+/** Campaign filter: a dropdown of real campaign names, chosen with radio buttons.
+ *
+ *  Free text was the wrong control here — you cannot type a campaign you have not
+ *  already seen, and a near-miss silently matches nothing. The list is scoped to the
+ *  current platform/product/month and ordered by spend, so the campaigns worth
+ *  filtering to sit at the top.
+ */
+function CampaignFilter() {
+  const { filters, setFilters, options } = usePeriod();
+  const [open, setOpen] = useState(false);
+  const [find, setFind] = useState("");
+  const box = useRef<HTMLDivElement>(null);
+
+  // Click-away and Escape both close it, as a native <select> would.
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: MouseEvent) => {
+      if (box.current && !box.current.contains(e.target as Node)) setOpen(false);
+    };
+    const key = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", away);
+    document.addEventListener("keydown", key);
+    return () => {
+      document.removeEventListener("mousedown", away);
+      document.removeEventListener("keydown", key);
+    };
+  }, [open]);
+
+  const shown = useMemo(() => {
+    const needle = find.trim().toLowerCase();
+    const list = options.campaigns ?? [];
+    return needle ? list.filter((c) => c.name.toLowerCase().includes(needle)) : list;
+  }, [options.campaigns, find]);
+
+  const choose = (name: string) => {
+    setFilters((f) => ({ ...f, campaign: name }));
+    setOpen(false);
+    setFind("");
+  };
+
+  const total = options.campaigns?.length ?? 0;
+
+  return (
+    <div className="relative" ref={box}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        disabled={total === 0}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        title={total === 0 ? "No campaigns in the current view" : "Filter by campaign"}
+        className={`flex w-56 items-center justify-between gap-2 rounded-lg border px-2 py-1.5 text-sm disabled:opacity-50 ${
+          filters.campaign
+            ? "border-slate-900 bg-slate-900 text-white dark:border-slate-100 dark:bg-slate-100 dark:text-slate-900"
+            : "border-slate-300 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+        }`}
+      >
+        <span className="truncate">
+          {filters.campaign || (total ? `All campaigns (${total})` : "No campaigns")}
+        </span>
+        <span className="shrink-0 text-xs opacity-70">▾</span>
+      </button>
+
+      {filters.campaign && (
+        <button
+          type="button"
+          onClick={() => setFilters((f) => ({ ...f, campaign: "" }))}
+          title="Remove the campaign filter"
+          className="absolute -right-5 top-1/2 -translate-y-1/2 text-sm text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+        >
+          ×
+        </button>
+      )}
+
+      {open && (
+        <div
+          role="listbox"
+          className="absolute left-0 top-full z-40 mt-1 w-80 rounded-xl border border-slate-200 bg-white p-2 shadow-lg dark:border-slate-700 dark:bg-slate-900"
+        >
+          {total > 8 && (
+            <input
+              autoFocus
+              value={find}
+              onChange={(e) => setFind(e.target.value)}
+              placeholder="Find a campaign…"
+              className="mb-2 w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800"
+            />
+          )}
+          <div className="max-h-72 overflow-y-auto">
+            <label className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-100 dark:hover:bg-slate-800">
+              <input
+                type="radio"
+                name="campaign-filter"
+                checked={!filters.campaign}
+                onChange={() => choose("")}
+              />
+              <span className="font-medium">All campaigns</span>
+            </label>
+            {shown.map((c) => (
+              <label
+                key={`${c.platform}:${c.name}`}
+                className="flex cursor-pointer items-start gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                <input
+                  type="radio"
+                  name="campaign-filter"
+                  className="mt-1"
+                  checked={filters.campaign === c.name}
+                  onChange={() => choose(c.name)}
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate">{c.name}</span>
+                  <span className="block text-[11px] text-slate-500">
+                    {c.platform} · {compactMoney(c.spend)} spend
+                  </span>
+                </span>
+              </label>
+            ))}
+            {shown.length === 0 && (
+              <div className="px-2 py-3 text-sm text-slate-500">
+                No campaign matches “{find}”.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function GlobalFilterBar() {
   const { filters, setFilters, options, days } = usePeriod();
   const box =
@@ -489,7 +637,7 @@ export function GlobalFilterBar() {
         <span className="w-16 shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500">
           Search
         </span>
-        {(["city", "keyword", "campaign"] as const).map((field) => (
+        {(["city", "keyword"] as const).map((field) => (
           <span key={field} className="relative">
             <input
               className={`${box} w-40 ${filters[field] ? "pr-7" : ""}`}
@@ -509,6 +657,7 @@ export function GlobalFilterBar() {
             )}
           </span>
         ))}
+        <CampaignFilter />
         {active > 0 && (
           <button
             type="button"

@@ -139,14 +139,50 @@ def days(period: str | None = None):
 
 
 @app.get("/api/filters")
-def filters():
+def filters(platform: str | None = None, category: str | None = None,
+            period: str | None = None):
+    """Options for the filter bar.
+
+    Campaigns are scoped to the platform/product/month already chosen, so picking
+    "Zepto" leaves only Zepto's campaigns to choose from instead of every campaign
+    across every platform. Platforms and products stay unscoped — narrowing them by
+    each other would make a chosen value vanish from its own list.
+    """
+    where, params = ["COALESCE(campaign_name, campaign_id) IS NOT NULL"], {}
+    if platform:
+        where.append("platform = :platform")
+        params["platform"] = platform
+    if category:
+        where.append("category = :category")
+        params["category"] = category
+    if period:
+        where.append("period_label = :period")
+        params["period"] = period
+
     with engine().connect() as conn:
         platforms = [r[0] for r in conn.execute(text(
             "SELECT DISTINCT platform FROM performance_metrics ORDER BY platform")).all()]
         categories = [r[0] for r in conn.execute(text(
             "SELECT DISTINCT category FROM performance_metrics "
             "WHERE category IS NOT NULL ORDER BY category")).all()]
-    return {"platforms": platforms, "categories": categories}
+        campaigns = [
+            {"name": r[0], "platform": r[1], "spend": float(r[2] or 0)}
+            for r in conn.execute(text(
+                "SELECT COALESCE(campaign_name, campaign_id) AS name, "
+                "       MIN(platform) AS platform, SUM(spend) AS spend "
+                "FROM performance_metrics WHERE " + " AND ".join(where) +
+                " GROUP BY COALESCE(campaign_name, campaign_id) "
+                # Biggest spenders first: with hundreds of campaigns the ones worth
+                # filtering to are at the top rather than wherever the alphabet puts them.
+                " ORDER BY SUM(spend) DESC NULLS LAST"
+                if engine().dialect.name == "postgresql" else
+                "SELECT COALESCE(campaign_name, campaign_id) AS name, "
+                "       MIN(platform) AS platform, SUM(spend) AS spend "
+                "FROM performance_metrics WHERE " + " AND ".join(where) +
+                " GROUP BY COALESCE(campaign_name, campaign_id) "
+                " ORDER BY SUM(spend) IS NULL, SUM(spend) DESC"), params).all()
+        ]
+    return {"platforms": platforms, "categories": categories, "campaigns": campaigns}
 
 
 # ---------------------------------------------------------------- dashboards
