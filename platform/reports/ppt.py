@@ -105,8 +105,19 @@ def _kpi_cards(slide, cards, top=Inches(1.5), height=Inches(1.15)):
 
 def _chart(slide, kind, categories, series: dict, left, top, width, height,
            title=None, legend=True):
+    categories = list(categories)
+    # python-pptx raises "chart data contains no categories" on an empty series, which
+    # takes the whole deck — and therefore the whole rebuild job — down. An empty
+    # slice is a normal state (a fresh install, one platform, a filtered view), so
+    # every chart degrades to a note instead of failing.
+    if not categories:
+        box = slide.shapes.add_textbox(left, top, width, height)
+        _text(box.text_frame, [title or "No data", "Nothing to chart for this selection."],
+              size=12, bold_first=True, color=GREY)
+        return None
+
     data = CategoryChartData()
-    data.categories = list(categories)
+    data.categories = categories
     for name, values in series.items():
         data.add_series(name, [None if v is None or pd.isna(v) else float(v) for v in values])
     graphic = slide.shapes.add_chart(kind, left, top, width, height, data)
@@ -233,6 +244,15 @@ def _cover(prs, period, kpis):
 def _executive(prs, engine, period, kpis):
     slide = _slide(prs, "Executive Summary",
                    "The whole picture in one view — every platform, one reporting period")
+    # overall_kpis returns {} when a period has no primary rows — a real state on a
+    # fresh install, and one that must not take the whole deck down with a KeyError.
+    if not kpis:
+        box = slide.shapes.add_textbox(MARGIN, Inches(2.0), W - 2 * MARGIN, Inches(1.2))
+        _text(box.text_frame, [
+            "No data loaded for this period.",
+            "Upload the platform exports on the Data & Uploads page, then regenerate.",
+        ], size=16, color=RED)
+        return
     top = _kpi_cards(slide, [
         ("Revenue", ai.inr(kpis["revenue"]), GREEN),
         ("Ad Spend", ai.inr(kpis["spend"]), BRAND),
@@ -247,8 +267,24 @@ def _executive(prs, engine, period, kpis):
            MARGIN, top, Inches(7.2), Inches(3.4), FMT)
 
     box = slide.shapes.add_textbox(Inches(8.0), top, Inches(4.8), Inches(3.6))
+    if table.empty:
+        _text(box.text_frame, ["Headlines", "No platform data was loaded for this period."],
+              size=14, bold_first=True, color=BRAND)
+        return
     best = table.iloc[0]
     worst = table.sort_values("roas").iloc[0]
+    # With a single platform loaded, best and worst are the same row — calling it both
+    # the biggest earner and "the first place to act" reads as a contradiction.
+    if len(table) == 1:
+        _text(box.text_frame, [
+            "Headlines",
+            f"• {best['platform']} is the only platform loaded this period: "
+            f"{ai.inr(best['revenue'])} of revenue on {ai.inr(best['spend'])} of spend.",
+            f"• That is ₹{best['roas']:.2f} back for every ₹1 spent.",
+            "• Load the other platforms' exports to compare them against each other.",
+            "• ROAS means Revenue ÷ Ad Spend. Above ₹3 is healthy, below ₹1 loses money.",
+        ], size=14, bold_first=True, color=BRAND)
+        return
     _text(box.text_frame, [
         "Headlines",
         f"• {best['platform']} is the biggest revenue source at {ai.inr(best['revenue'])} "
@@ -270,11 +306,22 @@ def _revenue_overview(prs, engine, period):
            {"Share": table["revenue"]}, Inches(7.9), Inches(1.5), Inches(4.9), Inches(4.4),
            title="Share of total revenue")
     note = slide.shapes.add_textbox(MARGIN, Inches(6.1), W - 2 * MARGIN, Inches(0.9))
-    top_two = table.head(2)
-    _text(note.text_frame, [
-        f"{top_two.iloc[0]['platform']} and {top_two.iloc[1]['platform']} together account for "
-        f"{ai.pct(top_two['revenue_share'].sum())} of all advertising revenue this period."],
-        size=14, color=BRAND)
+    # One platform is a normal state — a month can be loaded a file at a time, and
+    # early on only one platform's export exists. Reaching for a second row here
+    # crashed the whole rebuild ("single positional indexer is out-of-bounds"), which
+    # surfaced to the user as uploads silently not working.
+    top = table.head(2)
+    if top.empty:
+        message = "No platform revenue was loaded for this period."
+    elif len(top) == 1:
+        row = top.iloc[0]
+        message = (f"{row['platform']} is the only platform loaded this period, so it "
+                   f"accounts for all {ai.inr(row['revenue'])} of advertising revenue.")
+    else:
+        message = (f"{top.iloc[0]['platform']} and {top.iloc[1]['platform']} together account "
+                   f"for {ai.pct(top['revenue_share'].sum())} of all advertising revenue "
+                   "this period.")
+    _text(note.text_frame, [message], size=14, color=BRAND)
 
 
 def _spend_overview(prs, engine, period):

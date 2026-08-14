@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
   Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart,
@@ -325,22 +326,36 @@ export default function Executive() {
         </p>
       </Card>
 
-      <div className="mb-5 grid gap-4 md:grid-cols-2">
-        <Card title="Biggest revenue source">
+      {/* With one platform loaded these two cards are the same row, which reads as a
+          contradiction — "biggest revenue source" and "first place to act" at once. */}
+      {platforms.length === 1 ? (
+        <Card title="Only one platform loaded" className="mb-5">
           <div className="text-xl font-bold text-slate-900 dark:text-white">{best.platform}</div>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-            {money(best.revenue)} — {pct(best.revenue_share)} of all advertising revenue, returning{" "}
-            ₹{best.roas.toFixed(2)} per ₹1 spent.
+            {money(best.revenue)} of revenue on {money(best.spend)} of spend — ₹{best.roas.toFixed(2)}{" "}
+            back for every ₹1. Upload the other platforms&apos; exports on the{" "}
+            <Link href="/data" className="underline">Data &amp; Uploads</Link> page to compare them
+            against each other.
           </p>
         </Card>
-        <Card title="Weakest use of budget">
-          <div className="text-xl font-bold text-slate-900 dark:text-white">{worst.platform}</div>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-            Returns only ₹{worst.roas.toFixed(2)} per ₹1 spent on {money(worst.spend)} of budget —
-            the first place to act.
-          </p>
-        </Card>
-      </div>
+      ) : (
+        <div className="mb-5 grid gap-4 md:grid-cols-2">
+          <Card title="Biggest revenue source">
+            <div className="text-xl font-bold text-slate-900 dark:text-white">{best.platform}</div>
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+              {money(best.revenue)} — {pct(best.revenue_share)} of all advertising revenue, returning{" "}
+              ₹{best.roas.toFixed(2)} per ₹1 spent.
+            </p>
+          </Card>
+          <Card title="Weakest use of budget">
+            <div className="text-xl font-bold text-slate-900 dark:text-white">{worst.platform}</div>
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+              Returns only ₹{worst.roas.toFixed(2)} per ₹1 spent on {money(worst.spend)} of budget —
+              the first place to act.
+            </p>
+          </Card>
+        </div>
+      )}
 
       <Card title="What happened, and what to do about it"
             subtitle="Generated from this period's numbers — one read per platform.">
