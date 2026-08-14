@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { FileRow, Row, get, money, num, periodName, post } from "@/lib/api";
 import {
   Badge, Card, DataTable, ErrorBox, ExportButtons, Loading, usePeriod,
@@ -12,12 +12,24 @@ type Recon = {
   billed_spend: number | null; billed_revenue: number | null;
   gap_spend: number | null; gap_revenue: number | null;
 };
+type Inspected = {
+  filename: string; sheet?: string | null; status: string;
+  platform?: string; report_type?: string; sub_platform?: string | null;
+  ad_types?: string[]; category?: string | null; rows?: number; note?: string | null;
+};
 
 const PLATFORMS = ["Amazon", "Flipkart", "Instamart", "Zepto", "BigBasket", "Blinkit"];
 const PRODUCTS = ["Cold Coffee", "Filter Coffee", "Instant Coffee"];
 const SUBPLATFORMS = ["Minutes", "National"];   // Flipkart market
 const AD_TYPES = ["PLA", "PCA"];                 // ad type — Flipkart Minutes/National each have both; Zepto too
 const REPORTS = ["campaign", "product", "keyword", "city", "placement"];
+
+function Chip({ children, tone = "slate" }: { children: ReactNode; tone?: "slate" | "amber" }) {
+  const cls = tone === "amber"
+    ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+    : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300";
+  return <span className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${cls}`}>{children}</span>;
+}
 
 const STATUS_TONE: Record<string, string> = {
   ok: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",
@@ -40,6 +52,8 @@ export default function DataPage() {
   const [adType, setAdType] = useState("");
   const [reportType, setReportType] = useState("");
   const [staged, setStaged] = useState<File[]>([]);
+  const [inspected, setInspected] = useState<Inspected[] | null>(null);
+  const [inspecting, setInspecting] = useState(false);
   const [recon, setRecon] = useState<Recon[]>([]);
   const input = useRef<HTMLInputElement>(null);
   const { available } = usePeriod();
@@ -63,6 +77,21 @@ export default function DataPage() {
     }, 2000);
     return () => clearInterval(id);
   }, [job.status, refresh]);
+
+  // Read the columns of whatever was just staged, so the user sees what each file is
+  // (platform, report, PLA/PCA — including files that carry both) before committing.
+  useEffect(() => {
+    if (!staged.length) { setInspected(null); return; }
+    setInspecting(true);
+    const body = new FormData();
+    staged.forEach((f) => body.append("files", f));
+    let live = true;
+    post<{ files: Inspected[] }>("/api/inspect", body)
+      .then((r) => { if (live) setInspected(r.files); })
+      .catch(() => { if (live) setInspected(null); })
+      .finally(() => { if (live) setInspecting(false); });
+    return () => { live = false; };
+  }, [staged]);
 
   async function send(list: File[]) {
     if (!list.length) return;
@@ -182,6 +211,64 @@ export default function DataPage() {
             onChange={(e) => setStaged(Array.from(e.target.files ?? []))}
           />
         </div>
+
+        {staged.length > 0 && (
+          <div
+            className="mt-3 overflow-hidden rounded-lg border border-slate-200 dark:border-slate-800"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-900/60">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                What&apos;s in {staged.length === 1 ? "this file" : `these ${staged.length} files`}
+              </span>
+              {inspecting && <span className="text-xs text-slate-400">reading columns…</span>}
+            </div>
+            <div className="divide-y divide-slate-100 dark:divide-slate-800">
+              {(inspected ?? []).map((r, i) => {
+                const mixed = (r.ad_types ?? []).filter((a) => a === "PLA" || a === "PCA").length > 1;
+                return (
+                  <div key={i} className="flex flex-wrap items-center gap-1.5 px-3 py-2 text-sm">
+                    <span
+                      className="min-w-0 max-w-[15rem] truncate font-medium text-slate-700 dark:text-slate-200"
+                      title={r.filename}
+                    >
+                      {r.filename}{r.sheet ? ` · ${r.sheet}` : ""}
+                    </span>
+                    {r.status === "ok" ? (
+                      <>
+                        <Chip>{r.platform}</Chip>
+                        <Chip>{r.report_type}</Chip>
+                        {r.sub_platform && <Chip>{r.sub_platform}</Chip>}
+                        {mixed
+                          ? <Chip tone="amber">PLA + PCA · split by row</Chip>
+                          : (r.ad_types ?? []).map((a) => <Chip key={a}>{a}</Chip>)}
+                        {r.category && <Chip>{r.category}</Chip>}
+                        <span className="text-xs text-slate-400">{r.rows} rows</span>
+                        {r.note && (
+                          <span className="text-xs text-amber-600 dark:text-amber-400" title={r.note}>⚠ flag</span>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <Chip tone={r.status === "duplicate" ? "slate" : "amber"}>
+                          {r.status.replace("_", " ")}
+                        </Chip>
+                        {r.note && <span className="text-xs text-slate-500">{r.note}</span>}
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+              {!inspecting && inspected && inspected.length === 0 && (
+                <div className="px-3 py-2 text-sm text-slate-500">No readable sheets found in this selection.</div>
+              )}
+            </div>
+            <p className="bg-slate-50 px-3 pb-2 pt-2 text-xs text-slate-500 dark:bg-slate-900/60">
+              Preview only — nothing is loaded yet. If a file was mis-identified, correct it below and press Upload.
+              A file carrying <b>both PLA and PCA</b> is split automatically, row by row — no need to choose.
+            </p>
+          </div>
+        )}
 
         <div
           className="mt-3 rounded-lg border border-slate-200 p-3 dark:border-slate-800"

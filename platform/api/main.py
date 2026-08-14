@@ -307,6 +307,52 @@ def files():
     return records(df)
 
 
+@app.post("/api/inspect")
+def inspect(files: list[UploadFile]):
+    """Read the staged files' columns and say what each is — WITHOUT loading anything.
+
+    This powers the "identify before you upload" step: platform, report type,
+    sub-platform, and the ad types actually present (so a file carrying both PLA and
+    PCA rows shows both). Zips are expanded; duplicates and unknown shapes are flagged.
+    """
+    import tempfile
+    from etl.ingest import discover, parse_file
+    from etl.normalize import normalize
+
+    tmp = Path(tempfile.mkdtemp(prefix="levista_inspect_"))
+    out, seen = [], {}
+    try:
+        for item in files:
+            if Path(item.filename).suffix.lower() not in ALLOWED_SUFFIXES:
+                out.append({"filename": item.filename, "status": "rejected",
+                            "note": f"unsupported file type {Path(item.filename).suffix or '(none)'}"})
+                continue
+            with (tmp / Path(item.filename).name).open("wb") as fh:
+                shutil.copyfileobj(item.file, fh)
+        for path in discover(tmp, tmp):          # expands zips
+            for ds in parse_file(path, seen):
+                row = {"filename": path.name, "sheet": ds.sheet_name or None, "note": ds.error}
+                if ds.status == "duplicate":
+                    out.append({**row, "status": "duplicate"}); continue
+                if ds.signature is None:
+                    out.append({**row, "status": "needs_review"}); continue
+                ad_types = []
+                try:
+                    ad_types = sorted({str(a) for a in normalize(ds)["ad_type"].dropna() if a})
+                except Exception:
+                    pass
+                out.append({**row, "status": ds.status,
+                            "platform": ds.signature.platform,
+                            "report_type": ds.signature.report_type,
+                            "sub_platform": ds.sub_platform,
+                            "ad_types": ad_types,
+                            "category": ds.category,
+                            "rows": int(len(ds.df)) if ds.df is not None else 0})
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return {"files": out}
+
+
 @app.post("/api/upload")
 def upload(background: BackgroundTasks, files: list[UploadFile],
            period: str | None = Form(None),
