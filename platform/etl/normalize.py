@@ -77,6 +77,11 @@ def _infer_category(*texts) -> Optional[str]:
         return "Filter Coffee"
     if "instant" in blob or "classic" in blob:
         return "Instant Coffee"
+    # Generic / auto campaigns advertise every product, so they carry no single
+    # variant. Naming the bucket (last, after the specific matches) keeps that spend
+    # visible as a deliberate "all products" line instead of an empty category.
+    if any(k in blob for k in ("gkt", "all fsn", "auto", "generic")):
+        return "Generic"
     return None
 
 
