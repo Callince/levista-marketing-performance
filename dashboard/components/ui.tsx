@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   Dispatch, ReactNode, SetStateAction, createContext, useContext, useEffect, useState,
 } from "react";
-import { GLOSSARY, Periods, Row, get, periodName, roasTone } from "@/lib/api";
+import { GLOSSARY, PeriodCoverage, Periods, Row, dateRange, get, periodName, roasTone } from "@/lib/api";
 
 // ---------------------------------------------------------------- period context
 // Which month is on screen is shared by every page, so it lives here rather than
@@ -29,12 +29,14 @@ type PeriodState = {
   query: string;
   /** period + every active global filter, ready to append to an API call. */
   fullQuery: string;
+  /** the actual dates the selected period covers, or null while loading. */
+  coverage: PeriodCoverage | null;
 };
 
 const PeriodContext = createContext<PeriodState>({
   period: null, prior: null, available: [], comparable: false, setPeriod: () => {},
   filters: EMPTY, setFilters: () => {}, options: { platforms: [], categories: [] },
-  query: "", fullQuery: "",
+  query: "", fullQuery: "", coverage: null,
 });
 
 export const usePeriod = () => useContext(PeriodContext);
@@ -46,6 +48,7 @@ function PeriodProvider({ children }: { children: ReactNode }) {
   const [period, setPeriod] = useState<string | null>(null);
   const [filters, setFilters] = useState<GlobalFilters>(EMPTY);
   const [options, setOptions] = useState({ platforms: [] as string[], categories: [] as string[] });
+  const [coverage, setCoverage] = useState<PeriodCoverage | null>(null);
 
   useEffect(() => {
     get<Periods>("/api/periods")
@@ -54,6 +57,14 @@ function PeriodProvider({ children }: { children: ReactNode }) {
     get<{ platforms: string[]; categories: string[] }>("/api/filters")
       .then(setOptions).catch(() => {});
   }, []);
+
+  // The real dates the chosen month covers (a 10-day report is not the whole month).
+  useEffect(() => {
+    if (!period) { setCoverage(null); return; }
+    get<PeriodCoverage>(`/api/period?period=${encodeURIComponent(period)}`)
+      .then((r) => setCoverage({ start: r.start, end: r.end }))
+      .catch(() => setCoverage(null));
+  }, [period]);
 
   const index = period ? state.periods.indexOf(period) : -1;
   const prior = index > 0 ? state.periods[index - 1] : null;
@@ -68,7 +79,7 @@ function PeriodProvider({ children }: { children: ReactNode }) {
     <PeriodContext.Provider
       value={{
         period, prior, available: state.periods, comparable: state.comparable,
-        setPeriod, filters, setFilters, options, query, fullQuery,
+        setPeriod, filters, setFilters, options, query, fullQuery, coverage,
       }}
     >
       {children}
@@ -77,13 +88,18 @@ function PeriodProvider({ children }: { children: ReactNode }) {
 }
 
 export function PeriodPicker() {
-  const { period, prior, available, setPeriod } = usePeriod();
+  const { period, prior, available, setPeriod, coverage } = usePeriod();
   if (available.length === 0) return null;
+  // Show a day span only when it's a real multi-day range; a single/degenerate date
+  // would mislead, so the month label carries it on its own.
+  const span = coverage && coverage.start && coverage.end && coverage.start !== coverage.end
+    ? dateRange(coverage.start, coverage.end) : "";
   if (available.length === 1) {
     return (
       <div className="text-xs text-slate-500">
         <div className="font-medium">Showing</div>
         <div>{periodName(available[0])}</div>
+        {span && <div className="mt-0.5 text-[11px] font-medium text-slate-600 dark:text-slate-300">{span}</div>}
         <div className="mt-1 text-[11px] leading-snug">
           Load another month to switch on comparison.
         </div>
@@ -103,7 +119,8 @@ export function PeriodPicker() {
           <option key={p} value={p}>{periodName(p)}</option>
         ))}
       </select>
-      <div className="mt-1 text-[11px] text-slate-400">
+      {span && <div className="mt-1 text-[11px] font-medium text-slate-600 dark:text-slate-300">{span}</div>}
+      <div className="mt-0.5 text-[11px] text-slate-400">
         {prior ? `compared with ${periodName(prior)}` : "no earlier month to compare"}
       </div>
     </div>

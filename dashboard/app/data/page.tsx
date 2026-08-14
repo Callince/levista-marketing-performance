@@ -442,16 +442,19 @@ export default function DataPage() {
         <div className="mt-3 flex flex-wrap items-end gap-3">
           <div>
             <label className="block text-xs font-medium text-slate-500" htmlFor="month">
-              Month to load as
+              Which month is this data for?
             </label>
             <input
               id="month"
+              type="month"
               value={label}
               onChange={(e) => setLabel(e.target.value)}
-              placeholder="auto-detect"
-              pattern="\d{4}-\d{2}"
-              className="mt-1 w-36 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900"
+              className="mt-1 w-44 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900"
             />
+            <p className="mt-1 max-w-[16rem] text-[11px] text-slate-400">
+              Pick the reporting month so viewers see the data under the right date. Leave blank
+              to read it from the files (Amazon, Zepto and Blinkit carry no dates — set it for those).
+            </p>
           </div>
           <button
             onClick={rebuild}

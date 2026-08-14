@@ -95,18 +95,26 @@ def period_days(engine=None, period: str | None = None) -> int | None:
 def reporting_period(engine=None, period: str | None = None) -> tuple:
     scope = " AND period_label = :period" if period else ""
     df = _read(engine or get_engine(),
-               "SELECT MIN(period_start) AS s, MAX(period_end) AS e "
+               "SELECT DISTINCT period_start AS s, period_end AS e "
                "FROM performance_metrics WHERE period_start IS NOT NULL" + scope,
                **({"period": period} if period else {}))
     if df.empty:
         return None, None
+
     # SQLite hands dates back as strings; normalize both backends to date objects.
     def _as_date(value):
         if value is None or pd.isna(value):
             return None
         return pd.to_datetime(value).date()
 
-    return _as_date(df.iloc[0]["s"]), _as_date(df.iloc[0]["e"])
+    starts = [d for d in map(_as_date, df["s"]) if d]
+    ends = [d for d in map(_as_date, df["e"]) if d]
+    # Exports carry mixed, sometimes-misparsed dates. When a month is selected, keep only
+    # the dates that actually fall inside it, so one stray value can't distort the span.
+    if period and "-" in period:
+        starts = [d for d in starts if d.strftime("%Y-%m") == period] or starts
+        ends = [d for d in ends if d.strftime("%Y-%m") == period] or ends
+    return (min(starts) if starts else None, max(ends) if ends else None)
 
 
 def _scope(period=None, platform=None, category=None, primary=True) -> tuple[str, dict]:

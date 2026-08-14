@@ -59,6 +59,24 @@ export type Periods = {
   periods: string[]; latest: string | null; prior: string | null; comparable: boolean;
 };
 
+export type PeriodCoverage = { start: string | null; end: string | null };
+
+/** The actual dates a period covers: "2026-08-01".."2026-08-10" -> "1–10 Aug 2026".
+ *  Lets viewers see the real span (a 10-day report), not just the month label. */
+export const dateRange = (start?: string | null, end?: string | null) => {
+  const d = (s?: string | null) => (s ? new Date(`${s}T00:00:00`) : null);
+  const s = d(start), e = d(end);
+  const full: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", year: "numeric" };
+  if (s && e) {
+    const sameMonth = s.getMonth() === e.getMonth() && s.getFullYear() === e.getFullYear();
+    return sameMonth
+      ? `${s.getDate()}–${e.getDate()} ${e.toLocaleDateString("en-IN", { month: "short", year: "numeric" })}`
+      : `${s.toLocaleDateString("en-IN", full)} – ${e.toLocaleDateString("en-IN", full)}`;
+  }
+  const one = s ?? e;
+  return one ? one.toLocaleDateString("en-IN", full) : "";
+};
+
 /** "2026-08" -> "August 2026". Accepts unknown so it can be handed straight to
  *  Recharts, which types axis and tooltip labels as ReactNode. */
 export const periodName = (label: unknown) => {

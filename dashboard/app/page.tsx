@@ -6,7 +6,7 @@ import {
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import {
-  Alert, Insight, Kpis, PlatformRow, Row, compactMoney, delta, deltaTone, get, money,
+  Alert, Insight, Kpis, PlatformRow, Row, compactMoney, dateRange, delta, deltaTone, get, money,
   num, pct, periodName, roasTone, tipMoney,
 } from "@/lib/api";
 import {
@@ -36,7 +36,7 @@ export default function Executive() {
   const [funnel, setFunnel] = useState<FunnelStep[]>([]);
   const [products, setProducts] = useState<Row[]>([]);
   const [error, setError] = useState("");
-  const { period, prior, query, fullQuery, filters } = usePeriod();
+  const { period, prior, query, fullQuery, filters, coverage } = usePeriod();
 
   useEffect(() => {
     if (!period) return;
@@ -96,6 +96,11 @@ export default function Executive() {
             {filters.category && ` — ${filters.category}`}
             {period && ` — ${periodName(period)}`}
           </h1>
+          {coverage && coverage.start && coverage.end && coverage.start !== coverage.end && (
+            <p className="mt-0.5 text-sm font-medium text-slate-600 dark:text-slate-300">
+              Data for {dateRange(coverage.start, coverage.end)}
+            </p>
+          )}
           <p className="text-sm text-slate-500">
             Every platform in one view. Green is good, amber needs watching, red needs action.
             {basisNote}
