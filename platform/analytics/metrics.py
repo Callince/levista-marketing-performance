@@ -117,11 +117,15 @@ def reporting_period(engine=None, period: str | None = None) -> tuple:
     return (min(starts) if starts else None, max(ends) if ends else None)
 
 
-def _scope(period=None, platform=None, category=None, primary=True) -> tuple[str, dict]:
+def _scope(period=None, platform=None, category=None, primary=True, date=None) -> tuple[str, dict]:
     where, params = [], {}
     if primary:
         where.append("is_primary")
-    if period:
+    # A specific day narrows on period_start; otherwise scope to the month label.
+    if date:
+        where.append("period_start = :date")
+        params["date"] = date
+    elif period:
         where.append("period_label = :period")
         params["period"] = period
     if platform:
@@ -131,6 +135,40 @@ def _scope(period=None, platform=None, category=None, primary=True) -> tuple[str
         where.append("category = :category")
         params["category"] = category
     return (" WHERE " + " AND ".join(where) if where else ""), params
+
+
+# Day-level tables come straight from the fact table (the summary views collapse a
+# whole month). Each entry mirrors one summary view's grain and filters.
+_DAY_METRICS = """SUM(impressions) AS impressions, SUM(clicks) AS clicks,
+       SUM(spend) AS spend, SUM(revenue) AS revenue, SUM(orders) AS orders, SUM(units) AS units,
+       CASE WHEN SUM(spend) > 0 THEN SUM(revenue)/SUM(spend) END AS roas,
+       CASE WHEN SUM(impressions) > 0 THEN SUM(clicks)*1.0/SUM(impressions) END AS ctr,
+       CASE WHEN SUM(clicks) > 0 THEN SUM(spend)/SUM(clicks) END AS cpc,
+       CASE WHEN SUM(impressions) > 0 THEN SUM(spend)/SUM(impressions)*1000 END AS cpm,
+       CASE WHEN SUM(clicks) > 0 THEN SUM(orders)*1.0/SUM(clicks) END AS conv_rate"""
+
+_DAY_CFG = {
+    "campaign_summary": dict(primary=True, presence="COALESCE(campaign_name, campaign_id) IS NOT NULL",
+        dims="platform, sub_platform, ad_type, category, COALESCE(campaign_name, campaign_id) AS campaign_name",
+        group="platform, sub_platform, ad_type, category, COALESCE(campaign_name, campaign_id)"),
+    "product_summary": dict(primary=False, presence="COALESCE(product_name, product_id) IS NOT NULL",
+        dims="platform, category, COALESCE(product_name, product_id) AS product_name, MAX(product_id) AS product_id",
+        group="platform, category, COALESCE(product_name, product_id)"),
+    "keyword_summary": dict(primary=False, presence="keyword IS NOT NULL",
+        dims="platform, category, keyword, match_type, MAX(campaign_name) AS campaign_name",
+        group="platform, category, keyword, match_type"),
+    "city_summary": dict(primary=False, presence="city IS NOT NULL",
+        dims="platform, category, city",
+        group="platform, category, city"),
+}
+
+
+def day_entity(engine, view, date, platform=None, category=None) -> pd.DataFrame:
+    cfg = _DAY_CFG[view]
+    clause, params = _scope(platform=platform, category=category, primary=cfg["primary"], date=date)
+    sql = (f"SELECT {cfg['dims']}, {_DAY_METRICS} FROM performance_metrics{clause} "
+           f"AND {cfg['presence']} GROUP BY {cfg['group']}")
+    return _read(engine or get_engine(), sql, **params)
 
 
 PLATFORM_TOTALS_SQL = """
@@ -147,21 +185,50 @@ PLATFORM_TOTALS_SQL = """
 """
 
 
+def _finish_platforms(engine, df, period, date=None) -> pd.DataFrame:
+    """Shares, partial flag and ranks — the single-day path's tail (no growth)."""
+    if df.empty:
+        return df
+    from etl.signatures import PRIMARY_PRIORITY
+    total_revenue = df["revenue"].sum()
+    total_spend = df["spend"].sum()
+    df["revenue_share"] = df["revenue"] / total_revenue if total_revenue else None
+    df["spend_share"] = df["spend"] / total_spend if total_spend else None
+    df["period_label"] = period
+    for col in ("compare_to", "revenue_growth", "spend_growth", "orders_growth",
+                "roas_change", "days", "compare_days", "growth_basis", "clicks_coverage"):
+        df[col] = None
+    prim = _read(engine, "SELECT platform, report_type FROM performance_metrics "
+                 "WHERE is_primary = 1 AND period_start = :date", date=date)
+    got = prim.groupby("platform")["report_type"].apply(set).to_dict() if not prim.empty else {}
+    df["primary_report"] = df["platform"].map(lambda p: ", ".join(sorted(got.get(p, set()))))
+    df["partial"] = df["platform"].map(
+        lambda p: bool(PRIMARY_PRIORITY.get(p)) and PRIMARY_PRIORITY[p][0] not in got.get(p, set()))
+    df["rank_revenue"] = df["revenue"].rank(ascending=False, method="min").astype(int)
+    df["rank_roas"] = df["roas"].rank(ascending=False, method="min")
+    return df.sort_values("revenue", ascending=False).reset_index(drop=True)
+
+
 def platform_comparison(engine=None, period: str | None = None,
                         compare_to: str | None = "auto",
-                        category: str | None = None) -> pd.DataFrame:
+                        category: str | None = None, date: str | None = None) -> pd.DataFrame:
     """Platform league table with contribution share, rank and month-on-month growth.
 
     `period` defaults to the most recently loaded month. `compare_to="auto"` uses
     the month before it; pass None to skip the comparison, or an explicit label.
     `category` narrows to one coffee type — the platform_summary view has no category
     column, so that case is computed from the fact table with the same definitions.
+    `date` narrows to a single day (period_start); growth is skipped in that case.
     """
     engine = engine or get_engine()
     period = period or latest_period(engine)
     scope = " WHERE period_label = :period" if period else ""
     params = {"period": period} if period else {}
 
+    if date:
+        clause, dparams = _scope(category=category, date=date)
+        df = _read(engine, PLATFORM_TOTALS_SQL.format(clause=clause), **dparams)
+        return _finish_platforms(engine, df, period, date=date)
     if category:
         clause, params = _scope(period, None, category)
         df = _read(engine, PLATFORM_TOTALS_SQL.format(clause=clause), **params)
@@ -257,8 +324,8 @@ def platform_comparison(engine=None, period: str | None = None,
 
 
 def overall_kpis(engine=None, period: str | None = None,
-                 category: str | None = None) -> dict:
-    df = platform_comparison(engine, period, category=category)
+                 category: str | None = None, date: str | None = None) -> dict:
+    df = platform_comparison(engine, period, category=category, date=date)
     if df.empty:
         return {}
     spend = df["spend"].sum()
@@ -284,8 +351,14 @@ def overall_kpis(engine=None, period: str | None = None,
 
 
 def _view(engine, view: str, platform: str | None, category: str | None,
-          order_by: str = "revenue", period: str | None = "latest") -> pd.DataFrame:
+          order_by: str = "revenue", period: str | None = "latest",
+          date: str | None = None) -> pd.DataFrame:
     engine = engine or get_engine()
+    # A specific day is computed from the fact table, not the month-collapsed view.
+    if date and view in _DAY_CFG:
+        df = day_entity(engine, view, date, platform, category)
+        return (df.sort_values(order_by, ascending=False).reset_index(drop=True)
+                if not df.empty and order_by in df.columns else df)
     sql = f"SELECT * FROM {view}"
     where, params = [], {}
     # "latest" (the default) scopes to the newest loaded month; None means every
@@ -308,23 +381,23 @@ def _view(engine, view: str, platform: str | None, category: str | None,
 
 
 def campaigns(engine=None, platform=None, category=None,
-          period: str | None = "latest") -> pd.DataFrame:
-    return _view(engine, "campaign_summary", platform, category, period=period)
+          period: str | None = "latest", date: str | None = None) -> pd.DataFrame:
+    return _view(engine, "campaign_summary", platform, category, period=period, date=date)
 
 
 def products(engine=None, platform=None, category=None,
-          period: str | None = "latest") -> pd.DataFrame:
-    return _view(engine, "product_summary", platform, category, period=period)
+          period: str | None = "latest", date: str | None = None) -> pd.DataFrame:
+    return _view(engine, "product_summary", platform, category, period=period, date=date)
 
 
 def keywords(engine=None, platform=None, category=None,
-          period: str | None = "latest") -> pd.DataFrame:
-    return _view(engine, "keyword_summary", platform, category, period=period)
+          period: str | None = "latest", date: str | None = None) -> pd.DataFrame:
+    return _view(engine, "keyword_summary", platform, category, period=period, date=date)
 
 
 def cities(engine=None, platform=None, category=None,
-          period: str | None = "latest") -> pd.DataFrame:
-    return _view(engine, "city_summary", platform, category, period=period)
+          period: str | None = "latest", date: str | None = None) -> pd.DataFrame:
+    return _view(engine, "city_summary", platform, category, period=period, date=date)
 
 
 def categories_for(df: pd.DataFrame) -> list:

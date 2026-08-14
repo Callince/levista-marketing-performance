@@ -59,13 +59,13 @@ def records(df: pd.DataFrame) -> list[dict]:
 
 
 def _filtered(fetch, entity: str, platform, category, search, sort, limit, period="latest",
-              city=None, keyword=None, campaign=None):
+              city=None, keyword=None, campaign=None, date=None):
     """Global filters are applied where the dimension exists on that table.
 
     A city filter cannot mean anything to the campaign table — campaign rows carry no
     city — so it is ignored there rather than silently returning nothing.
     """
-    df = fetch(engine(), platform=platform, category=category, period=period)
+    df = fetch(engine(), platform=platform, category=category, period=period, date=date)
     if df.empty:
         return []
     df = metrics.collapse(df, entity, ["platform"] if not platform else None)
@@ -127,6 +127,17 @@ def period(period: str | None = None):
     }
 
 
+@app.get("/api/days")
+def days(period: str | None = None):
+    """The distinct report dates in a month — the options for the day filter."""
+    scope = " WHERE period_start IS NOT NULL" + (" AND period_label = :period" if period else "")
+    with engine().connect() as conn:
+        rows = conn.execute(
+            text(f"SELECT DISTINCT period_start FROM performance_metrics{scope} ORDER BY period_start"),
+            ({"period": period} if period else {})).all()
+    return {"days": [str(r[0]) for r in rows if r[0] is not None]}
+
+
 @app.get("/api/filters")
 def filters():
     with engine().connect() as conn:
@@ -142,10 +153,11 @@ def filters():
 
 @app.get("/api/kpis")
 def kpis(platform: str | None = None, period: str | None = None,
-         compare: str | None = "auto", category: str | None = None):
-    data = metrics.overall_kpis(engine(), period, category)
+         compare: str | None = "auto", category: str | None = None,
+         date: str | None = None):
+    data = metrics.overall_kpis(engine(), period, category, date=date)
     if platform:
-        table = metrics.platform_comparison(engine(), period, compare, category)
+        table = metrics.platform_comparison(engine(), period, compare, category, date=date)
         row = table[table["platform"] == platform]
         if row.empty:
             raise HTTPException(404, f"No data for platform {platform}")
@@ -163,8 +175,8 @@ def kpis(platform: str | None = None, period: str | None = None,
 
 @app.get("/api/platforms")
 def platforms(period: str | None = None, compare: str | None = "auto",
-              category: str | None = None):
-    return records(metrics.platform_comparison(engine(), period, compare, category))
+              category: str | None = None, date: str | None = None):
+    return records(metrics.platform_comparison(engine(), period, compare, category, date=date))
 
 
 @app.get("/api/campaigns")
@@ -172,10 +184,10 @@ def campaigns(platform: str | None = None, category: str | None = None,
               search: str | None = None, sort: str = "revenue",
               period: str | None = "latest",
               city: str | None = None, keyword: str | None = None,
-              campaign: str | None = None,
+              campaign: str | None = None, date: str | None = None,
               limit: int = Query(200, le=2000)):
     return _filtered(metrics.campaigns, "campaign", platform, category, search, sort,
-                     limit, period, city, keyword, campaign)
+                     limit, period, city, keyword, campaign, date)
 
 
 @app.get("/api/products")
@@ -183,10 +195,10 @@ def products(platform: str | None = None, category: str | None = None,
              search: str | None = None, sort: str = "revenue",
              period: str | None = "latest",
              city: str | None = None, keyword: str | None = None,
-             campaign: str | None = None,
+             campaign: str | None = None, date: str | None = None,
              limit: int = Query(200, le=2000)):
     return _filtered(metrics.products, "product", platform, category, search, sort,
-                     limit, period, city, keyword, campaign)
+                     limit, period, city, keyword, campaign, date)
 
 
 @app.get("/api/keywords")
@@ -194,10 +206,10 @@ def keywords(platform: str | None = None, category: str | None = None,
              search: str | None = None, sort: str = "revenue",
              period: str | None = "latest",
              city: str | None = None, keyword: str | None = None,
-             campaign: str | None = None,
+             campaign: str | None = None, date: str | None = None,
              limit: int = Query(300, le=2000)):
     return _filtered(metrics.keywords, "keyword", platform, category, search, sort,
-                     limit, period, city, keyword, campaign)
+                     limit, period, city, keyword, campaign, date)
 
 
 @app.get("/api/cities")
@@ -205,10 +217,10 @@ def cities(platform: str | None = None, category: str | None = None,
            search: str | None = None, sort: str = "revenue",
            period: str | None = "latest",
            city: str | None = None, keyword: str | None = None,
-           campaign: str | None = None,
+           campaign: str | None = None, date: str | None = None,
            limit: int = Query(300, le=2000)):
     return _filtered(metrics.cities, "city", platform, category, search, sort,
-                     limit, period, city, keyword, campaign)
+                     limit, period, city, keyword, campaign, date)
 
 
 @app.get("/api/keywords/buckets")

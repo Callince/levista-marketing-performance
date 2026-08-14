@@ -12,9 +12,10 @@ import { GLOSSARY, PeriodCoverage, Periods, Row, dateRange, get, periodName, roa
 // being threaded through props or duplicated per page.
 export type GlobalFilters = {
   platform: string; category: string; city: string; keyword: string; campaign: string;
+  date: string;
 };
 
-const EMPTY: GlobalFilters = { platform: "", category: "", city: "", keyword: "", campaign: "" };
+const EMPTY: GlobalFilters = { platform: "", category: "", city: "", keyword: "", campaign: "", date: "" };
 
 type PeriodState = {
   period: string | null;
@@ -31,12 +32,14 @@ type PeriodState = {
   fullQuery: string;
   /** the actual dates the selected period covers, or null while loading. */
   coverage: PeriodCoverage | null;
+  /** the report days available in the selected month, for the day filter. */
+  days: string[];
 };
 
 const PeriodContext = createContext<PeriodState>({
   period: null, prior: null, available: [], comparable: false, setPeriod: () => {},
   filters: EMPTY, setFilters: () => {}, options: { platforms: [], categories: [] },
-  query: "", fullQuery: "", coverage: null,
+  query: "", fullQuery: "", coverage: null, days: [],
 });
 
 export const usePeriod = () => useContext(PeriodContext);
@@ -49,6 +52,7 @@ function PeriodProvider({ children }: { children: ReactNode }) {
   const [filters, setFilters] = useState<GlobalFilters>(EMPTY);
   const [options, setOptions] = useState({ platforms: [] as string[], categories: [] as string[] });
   const [coverage, setCoverage] = useState<PeriodCoverage | null>(null);
+  const [days, setDays] = useState<string[]>([]);
 
   useEffect(() => {
     get<Periods>("/api/periods")
@@ -58,13 +62,21 @@ function PeriodProvider({ children }: { children: ReactNode }) {
       .then(setOptions).catch(() => {});
   }, []);
 
-  // The real dates the chosen month covers (a 10-day report is not the whole month).
+  // The real dates the chosen month covers (a 10-day report is not the whole month),
+  // and the individual report days available for the day filter.
   useEffect(() => {
-    if (!period) { setCoverage(null); return; }
+    if (!period) { setCoverage(null); setDays([]); return; }
     get<PeriodCoverage>(`/api/period?period=${encodeURIComponent(period)}`)
       .then((r) => setCoverage({ start: r.start, end: r.end }))
       .catch(() => setCoverage(null));
+    get<{ days: string[] }>(`/api/days?period=${encodeURIComponent(period)}`)
+      .then((r) => setDays(r.days)).catch(() => setDays([]));
   }, [period]);
+
+  // If the selected day isn't in the newly-chosen month, drop it.
+  useEffect(() => {
+    setFilters((f) => (f.date && !days.includes(f.date) ? { ...f, date: "" } : f));
+  }, [days]);
 
   const index = period ? state.periods.indexOf(period) : -1;
   const prior = index > 0 ? state.periods[index - 1] : null;
@@ -79,7 +91,7 @@ function PeriodProvider({ children }: { children: ReactNode }) {
     <PeriodContext.Provider
       value={{
         period, prior, available: state.periods, comparable: state.comparable,
-        setPeriod, filters, setFilters, options, query, fullQuery, coverage,
+        setPeriod, filters, setFilters, options, query, fullQuery, coverage, days,
       }}
     >
       {children}
@@ -411,11 +423,11 @@ function Toggle({ label, active, onClick, clearable = true }: {
 }
 
 export function GlobalFilterBar() {
-  const { filters, setFilters, options } = usePeriod();
+  const { filters, setFilters, options, days } = usePeriod();
   const box =
     "rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900";
   const empty: GlobalFilters = {
-    platform: "", category: "", city: "", keyword: "", campaign: "",
+    platform: "", category: "", city: "", keyword: "", campaign: "", date: "",
   };
   const active = Object.values(filters).filter(Boolean).length;
 
@@ -457,6 +469,21 @@ export function GlobalFilterBar() {
                   onClick={() => toggle("category", c)} />
         ))}
       </div>
+
+      {days.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="w-16 shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Day
+          </span>
+          <select className={box} value={filters.date} onChange={(e) => set("date", e.target.value)}>
+            <option value="">All days · whole month</option>
+            {days.map((d) => <option key={d} value={d}>{dateRange(d, d)}</option>)}
+          </select>
+          {filters.date && (
+            <span className="text-xs text-slate-500">viewing a single day</span>
+          )}
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         <span className="w-16 shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500">
