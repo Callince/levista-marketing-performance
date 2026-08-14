@@ -373,14 +373,15 @@ def _describe_upload(path: Path, platform, category, report_type):
     """
     if path.suffix.lower() == ".zip":
         return platform, report_type, category      # a zip holds many, don't guess
-    if platform and report_type and category:
-        return platform, report_type, category
     try:
         from etl.ingest import parse_file
         for ds in parse_file(path, {}):
             if ds.signature:
-                return (platform or ds.signature.platform,
-                        report_type or ds.signature.report_type,
+                # Columns decide how the file loads, so they decide its name too.
+                # Declaring "campaign" for a file whose columns are a product report
+                # produced Instamart_campaign_....csv loaded as a product report.
+                return (ds.signature.platform or platform,
+                        ds.signature.report_type or report_type,
                         category or ds.category)
     except Exception:
         pass                                        # naming must never fail an upload
@@ -500,15 +501,37 @@ def clear_data(confirm: str = Form(...)):
         moved += 1
 
     tables = ["raw_records", "performance_metrics", "insights",
-              "recommendations", "alerts", "anomalies", "uploaded_files"]
+              "recommendations", "alerts", "anomalies", "uploaded_files", "audit_log"]
     with engine().begin() as conn:
         for t in tables:
             conn.execute(text(f"DELETE FROM {t}"))
 
+    # The billed totals are data too. Left behind, they become the headline the moment
+    # any month with a matching key is loaded — so a "cleared" app showed ₹2,13,127 of
+    # revenue against a freshly uploaded file that tracked ₹2,972. Kept as a .bak so
+    # the figures can be restored, since they were typed in by hand.
+    overrides = Path(metrics.__file__).resolve().parent.parent / "overrides.json"
+    cleared_overrides = False
+    if overrides.exists():
+        try:
+            current = json.loads(overrides.read_text(encoding="utf-8"))
+        except ValueError:
+            current = {}
+        if any(k for k in current if not k.startswith("_")):
+            overrides.with_suffix(".json.bak").write_text(
+                json.dumps(current, indent=1), encoding="utf-8")
+            overrides.write_text(
+                json.dumps({"_comment": current.get("_comment", "")}, indent=1),
+                encoding="utf-8")
+            cleared_overrides = True
+
     JOB.update(status="done",
-               message=f"All data cleared ({moved} source items moved to {backup.name}). "
-                       "Upload your files to begin.", finished_at=datetime.now().isoformat())
-    return {"cleared": True, "moved": moved, "backup": str(backup)}
+               message=f"All data cleared ({moved} source items moved to {backup.name}"
+                       + (", billed totals reset" if cleared_overrides else "")
+                       + "). Upload your files to begin.",
+               finished_at=datetime.now().isoformat())
+    return {"cleared": True, "moved": moved, "backup": str(backup),
+            "overrides_cleared": cleared_overrides}
 
 
 @app.get("/api/uploads")
