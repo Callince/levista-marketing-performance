@@ -245,15 +245,32 @@ def platform_comparison(engine=None, period: str | None = None,
                SUM(CASE WHEN clicks IS NOT NULL THEN spend ELSE 0 END) AS covered,
                SUM(spend) AS total
         FROM performance_metrics{cov_clause} GROUP BY platform""", **cov_params)
-    coverage["clicks_coverage"] = coverage["covered"] / coverage["total"].replace(0, None)
-    df = df.merge(coverage[["platform", "clicks_coverage"]], on="platform", how="left")
-    partial = df["clicks_coverage"].fillna(0) < 0.8
-    df.loc[partial, ["ctr", "cpc", "conv_rate"]] = None
+    df = df.merge(coverage[["platform", "covered"]], on="platform", how="left")
+    df["tracked_spend"] = df["spend"]
+    df["tracked_revenue"] = df["revenue"]
 
     # Billed totals win over summed breakdowns where the exports were incomplete.
     # Not applied to a category slice — the billing figures are whole-platform only.
     if not category:
         df = _apply_overrides(df, period)
+    df["overridden"] = df["spend"] != df["tracked_spend"]
+
+    # Two different coverage questions, and conflating them is what produced the
+    # contradictory CPCs (₹125 on the KPI card, ₹8 in the platform table):
+    #   clicks_coverage — of the spend the exports DO track, how much reports clicks.
+    #                     This is the original rule: it decides whether a rate is
+    #                     representative enough to show at all.
+    #   billed_coverage — how much of the billed total the exports track. Below 1 the
+    #                     billed figure comes from the billing dashboard while the
+    #                     efficiency metrics can only describe the tracked part.
+    df["clicks_coverage"] = df["covered"] / df["tracked_spend"].replace(0, None)
+    df["billed_coverage"] = df["tracked_spend"] / df["spend"].replace(0, None)
+    # Cost per click is spend ÷ clicks on ONE base. Clicks are tracked-only, so the
+    # numerator must be tracked spend too — never the billed override.
+    df["cpc"] = df["tracked_spend"] / df["clicks"].replace(0, None)
+    partial = df["clicks_coverage"].fillna(0) < 0.8
+    df.loc[partial, ["ctr", "cpc", "conv_rate"]] = None
+    df = df.drop(columns=["covered"])
 
     total_revenue = df["revenue"].sum()
     total_spend = df["spend"].sum()
@@ -333,6 +350,11 @@ def overall_kpis(engine=None, period: str | None = None,
     clicks = df["clicks"].sum()
     impressions = df["impressions"].sum()
     orders = df["orders"].sum()
+    tracked_spend = df["tracked_spend"].sum() if "tracked_spend" in df else spend
+    # Cost per click must use the same base as the clicks it divides — tracked spend,
+    # never the billed override. Using billed spend here is what put ₹125 on the KPI
+    # card beside ₹8 in the platform table.
+    comparable = bool(df["cpc"].notna().any()) if "cpc" in df else True
     return {
         "spend": spend,
         "revenue": revenue,
@@ -342,8 +364,12 @@ def overall_kpis(engine=None, period: str | None = None,
         "roas": revenue / spend if spend else None,
         "roi": (revenue - spend) / spend if spend else None,
         "ctr": clicks / impressions if impressions else None,
-        "cpc": spend / clicks if clicks else None,
+        "cpc": (tracked_spend / clicks if clicks else None) if comparable else None,
         "conv_rate": orders / clicks if clicks else None,
+        "tracked_spend": tracked_spend,
+        "tracked_revenue": df["tracked_revenue"].sum() if "tracked_revenue" in df else revenue,
+        "billed_override": bool(df["overridden"].any()) if "overridden" in df else False,
+        "billed_coverage": (tracked_spend / spend) if spend else None,
         "platforms": len(df),
         "best_platform": df.iloc[0]["platform"],
         "best_roas_platform": df.sort_values("roas", ascending=False).iloc[0]["platform"],

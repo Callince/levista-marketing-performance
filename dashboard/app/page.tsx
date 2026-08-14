@@ -133,6 +133,20 @@ export default function Executive() {
              hint={`${num(kpis.clicks)} clicks`} />
       </div>
 
+      {/* Without this, the headline looks broken: spend/revenue are the billed
+          totals, but every breakdown can only show the uploaded portion, so the
+          numbers below never add up to the cards above. */}
+      {kpis.billed_override && (kpis.billed_coverage ?? 1) < 0.95 && (
+        <div className="mb-5 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+          <b>Revenue and spend above are the billed totals</b> from the platform billing
+          dashboards, not the uploaded reports. The reports loaded so far account for{" "}
+          {money(kpis.tracked_spend)} of the {money(kpis.spend)} billed
+          {kpis.billed_coverage != null && ` (${pct(kpis.billed_coverage)})`}, so everything
+          below — by product, campaign, keyword and city — adds up to the tracked figure,
+          not the headline. Upload each platform&apos;s campaign report to close the gap.
+        </div>
+      )}
+
       {alerts.length > 0 && (
         <Card title="Needs attention" className="mb-5">
           <ul className="space-y-2">
@@ -323,6 +337,13 @@ export default function Executive() {
           A blank CTR, CPC or conversion rate means that platform&apos;s export does not report
           clicks for most of its spend, so the figure would not be comparable. It is left blank
           rather than shown as a misleading number.
+          {platforms.some((p) => p.overridden) && (
+            <>
+              {" "}Where spend is a billed total, CPC is still computed from the tracked spend
+              and tracked clicks — the two always share one base, so it will not match
+              billed&nbsp;spend&nbsp;÷&nbsp;clicks.
+            </>
+          )}
         </p>
       </Card>
 

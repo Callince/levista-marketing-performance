@@ -96,6 +96,11 @@ export const deltaTone = (v: number | null | undefined, goodWhenUp = true) =>
     : "text-red-600 dark:text-red-400";
 
 export type Kpis = {
+  /** Present when overrides.json supplies a billed total for at least one platform:
+   *  headline spend/revenue are the billed figures, while the breakdowns can only
+   *  describe the tracked_* portion. */
+  tracked_spend?: number; tracked_revenue?: number;
+  billed_override?: boolean; billed_coverage?: number | null;
   revenue: number; spend: number; orders: number; roas: number; roi: number;
   ctr: number | null; cpc: number | null; conv_rate: number | null;
   impressions: number; clicks: number;
@@ -106,6 +111,8 @@ export type PlatformRow = Row & {
   roas: number; revenue_share: number; ctr: number | null; conv_rate: number | null;
   revenue_growth: number | null; spend_growth: number | null; roas_change: number | null;
   days: number | null; compare_days: number | null;
+  tracked_spend?: number; tracked_revenue?: number;
+  overridden?: boolean; billed_coverage?: number | null;
   /** "per day" when the two months differ in length, else "total". */
   growth_basis: string | null;
   /** true when no campaign report was loaded, so the total is a partial breakdown. */
