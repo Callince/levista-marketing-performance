@@ -174,6 +174,31 @@ SIGNATURES: list[Signature] = [
     # city / product signatures carry more required columns, so they out-rank the
     # campaign signature on the files that are actually city/product breakdowns.
     Signature(
+        # Instamart's most granular export: one row per date x campaign x keyword x
+        # product x city. It satisfies instamart_city too (every row has a CITY), and
+        # matching that way is how a keyword report came to be filed as a city report.
+        # Being stricter (KEYWORD + MATCH_TYPE) makes this win on specificity.
+        #
+        # Only the keyword dimension is mapped, deliberately. City and product are in
+        # the file, but Instamart also ships dedicated city and product reports for the
+        # same days — mapping them here would count those days twice in the city and
+        # product breakdowns (it inflated Instamart's city spend by 9%). Keywords are
+        # the one dimension no other Instamart export provides.
+        key="instamart_keyword", platform="Instamart", report_type="keyword",
+        entity_type="keyword",
+        required=frozenset({"campaign_id", "keyword", "match_type", "total_impressions",
+                            "total_budget_burnt", "total_gmv"}),
+        colmap=_m(
+            campaign_id="CAMPAIGN_ID", campaign_name="CAMPAIGN_NAME", status="CAMPAIGN_STATUS",
+            keyword="KEYWORD", match_type="MATCH_TYPE", date="METRICS_DATE",
+            impressions="TOTAL_IMPRESSIONS", spend="TOTAL_BUDGET_BURNT",
+            budget="TOTAL_BUDGET", clicks="TOTAL_CLICKS", ctr_reported="TOTAL_CTR",
+            atc="TOTAL_A2C", revenue="TOTAL_GMV", orders="TOTAL_CONVERSIONS",
+            roas_reported="TOTAL_ROI", cpm_reported="eCPM",
+        ),
+        pct_fields=frozenset({"ctr_reported"}),
+    ),
+    Signature(
         key="instamart_city", platform="Instamart", report_type="city", entity_type="city",
         required=frozenset({"campaign_id", "city", "total_impressions", "total_budget_burnt", "total_gmv"}),
         colmap=_m(

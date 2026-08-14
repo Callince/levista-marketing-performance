@@ -248,6 +248,7 @@ def platform_comparison(engine=None, period: str | None = None,
     df = df.merge(coverage[["platform", "covered"]], on="platform", how="left")
     df["tracked_spend"] = df["spend"]
     df["tracked_revenue"] = df["revenue"]
+    df["tracked_orders"] = df["orders"]
 
     # Billed totals win over summed breakdowns where the exports were incomplete.
     # Not applied to a category slice — the billing figures are whole-platform only.
@@ -309,17 +310,36 @@ def platform_comparison(engine=None, period: str | None = None,
             scale = (days / baseline_days) if uneven else 1.0
             df["growth_basis"] = "per day" if uneven else "total"
 
-            previous = previous[["platform", "revenue", "spend", "orders", "roas"]].add_prefix("prev_")
+            # Both sides of a growth figure must sit on the same base. overrides.json
+            # is configured per month, so a billed August against a tracked July would
+            # compare a billing dashboard with a sum of exports and call the difference
+            # growth. Billed is used only where BOTH months have one; otherwise both
+            # sides fall back to tracked.
+            previous_tracked = previous.copy()
+            previous_billed = _apply_overrides(previous.copy(), baseline)
+            prev_overridden = previous_billed["spend"] != previous_tracked["spend"]
+            previous_billed["prev_overridden"] = prev_overridden
+
+            previous = previous_billed[["platform", "revenue", "spend", "orders", "roas",
+                                        "prev_overridden"]].add_prefix("prev_")
+            previous = previous.rename(columns={"prev_prev_overridden": "prev_overridden"})
+            tracked_prev = previous_tracked[["platform", "revenue", "spend", "orders"]].add_prefix("prevtrk_")
             df = df.merge(previous, left_on="platform", right_on="prev_platform", how="left")
+            df = df.merge(tracked_prev, left_on="platform", right_on="prevtrk_platform", how="left")
+
+            both_billed = df["overridden"].fillna(False) & df["prev_overridden"].fillna(False)
             for measure, column in (("revenue", "revenue_growth"), ("spend", "spend_growth"),
                                     ("orders", "orders_growth")):
+                now = df[measure].where(both_billed, df.get(f"tracked_{measure}", df[measure]))
+                prior = df[f"prev_{measure}"].where(both_billed, df[f"prevtrk_{measure}"])
                 # what the earlier month would have produced over this month's span
-                before = df[f"prev_{measure}"] * scale
+                before = prior * scale
                 # A platform absent last month has no growth figure — not +100%.
-                df[column] = (df[measure] - before) / before.where(before > 0)
+                df[column] = (now - before) / before.where(before > 0)
             # ROAS is a ratio, so it needs no length adjustment.
             df["roas_change"] = df["roas"] - df["prev_roas"]
-            df = df.drop(columns=["prev_platform"])
+            df = df.drop(columns=["prev_platform", "prevtrk_platform", "prev_overridden",
+                                  "prevtrk_revenue", "prevtrk_spend", "prevtrk_orders"])
 
     # Partial-total flag: a platform's headline should be its campaign report. When
     # that report is absent the primary grain falls through to product/keyword, so the
