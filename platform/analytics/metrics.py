@@ -229,6 +229,20 @@ def platform_comparison(engine=None, period: str | None = None,
             df["roas_change"] = df["roas"] - df["prev_roas"]
             df = df.drop(columns=["prev_platform"])
 
+    # Partial-total flag: a platform's headline should be its campaign report. When
+    # that report is absent the primary grain falls through to product/keyword, so the
+    # total under-reports — mark it so the dashboard can say "partial" instead of
+    # showing a quietly-low number as if it were complete.
+    from etl.signatures import PRIMARY_PRIORITY
+    prim_scope = " WHERE is_primary = 1" + (" AND period_label = :period" if period else "")
+    prim = _read(engine, f"SELECT platform, report_type FROM performance_metrics{prim_scope}",
+                 **({"period": period} if period else {}))
+    got = (prim.groupby("platform")["report_type"].apply(set).to_dict()
+           if not prim.empty else {})
+    df["primary_report"] = df["platform"].map(lambda p: ", ".join(sorted(got.get(p, set()))))
+    df["partial"] = df["platform"].map(
+        lambda p: bool(PRIMARY_PRIORITY.get(p)) and PRIMARY_PRIORITY[p][0] not in got.get(p, set()))
+
     df["rank_revenue"] = df["revenue"].rank(ascending=False, method="min").astype(int)
     df["rank_roas"] = df["roas"].rank(ascending=False, method="min")
     return df.sort_values("revenue", ascending=False).reset_index(drop=True)

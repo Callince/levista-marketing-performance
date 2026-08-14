@@ -75,7 +75,19 @@ export default function Platforms() {
         <DataTable
           columns={[
             { key: "rank_revenue", label: "#", align: "right" },
-            { key: "platform", label: "Platform" },
+            { key: "platform", label: "Platform", render: (row) => (
+              <span className="inline-flex items-center gap-1.5">
+                {String(row.platform)}
+                {row.partial ? (
+                  <span
+                    title={`Partial — no campaign report, so the total is built from ${row.primary_report} and under-reports the billed spend.`}
+                    className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+                  >
+                    partial
+                  </span>
+                ) : null}
+              </span>
+            ) },
             { key: "revenue", label: "Revenue", align: "right", format: (v) => money(v) },
             { key: "spend", label: "Spend", align: "right", format: (v) => money(v) },
             { key: "orders", label: "Orders", align: "right", format: (v) => num(v) },

@@ -90,6 +90,10 @@ export type PlatformRow = Row & {
   days: number | null; compare_days: number | null;
   /** "per day" when the two months differ in length, else "total". */
   growth_basis: string | null;
+  /** true when no campaign report was loaded, so the total is a partial breakdown. */
+  partial?: boolean;
+  /** report type(s) the total is actually built from (e.g. "product"). */
+  primary_report?: string;
 };
 
 export type Insight = {
