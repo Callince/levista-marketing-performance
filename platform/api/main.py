@@ -190,10 +190,13 @@ def filters(platform: str | None = None, category: str | None = None,
 @app.get("/api/kpis")
 def kpis(platform: str | None = None, period: str | None = None,
          compare: str | None = "auto", category: str | None = None,
-         date: str | None = None):
-    data = metrics.overall_kpis(engine(), period, category, date=date)
+         date: str | None = None, campaign: str | None = None,
+         city: str | None = None, keyword: str | None = None):
+    data = metrics.overall_kpis(engine(), period, category, date=date,
+                                campaign=campaign, city=city, keyword=keyword)
     if platform:
-        table = metrics.platform_comparison(engine(), period, compare, category, date=date)
+        table = metrics.platform_comparison(engine(), period, compare, category, date=date,
+                                            campaign=campaign, city=city, keyword=keyword)
         row = table[table["platform"] == platform]
         if row.empty:
             raise HTTPException(404, f"No data for platform {platform}")
@@ -211,8 +214,12 @@ def kpis(platform: str | None = None, period: str | None = None,
 
 @app.get("/api/platforms")
 def platforms(period: str | None = None, compare: str | None = "auto",
-              category: str | None = None, date: str | None = None):
-    return records(metrics.platform_comparison(engine(), period, compare, category, date=date))
+              category: str | None = None, date: str | None = None,
+              campaign: str | None = None, city: str | None = None,
+              keyword: str | None = None):
+    return records(metrics.platform_comparison(
+        engine(), period, compare, category, date=date,
+        campaign=campaign, city=city, keyword=keyword))
 
 
 @app.get("/api/campaigns")

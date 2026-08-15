@@ -117,7 +117,8 @@ def reporting_period(engine=None, period: str | None = None) -> tuple:
     return (min(starts) if starts else None, max(ends) if ends else None)
 
 
-def _scope(period=None, platform=None, category=None, primary=True, date=None) -> tuple[str, dict]:
+def _scope(period=None, platform=None, category=None, primary=True, date=None,
+           campaign=None, city=None, keyword=None) -> tuple[str, dict]:
     where, params = [], {}
     if primary:
         where.append("is_primary")
@@ -134,6 +135,18 @@ def _scope(period=None, platform=None, category=None, primary=True, date=None) -
     if category:
         where.append("category = :category")
         params["category"] = category
+    # Entity filters narrow the totals as well as the tables. Without this the KPI
+    # cards ignored the campaign filter entirely: every campaign showed the platform
+    # total, so seven campaigns each "summed" to the whole month.
+    if campaign:
+        where.append("COALESCE(campaign_name, campaign_id) = :campaign")
+        params["campaign"] = campaign
+    if city:
+        where.append("city = :city")
+        params["city"] = city
+    if keyword:
+        where.append("keyword = :keyword")
+        params["keyword"] = keyword
     return (" WHERE " + " AND ".join(where) if where else ""), params
 
 
@@ -211,7 +224,9 @@ def _finish_platforms(engine, df, period, date=None) -> pd.DataFrame:
 
 def platform_comparison(engine=None, period: str | None = None,
                         compare_to: str | None = "auto",
-                        category: str | None = None, date: str | None = None) -> pd.DataFrame:
+                        category: str | None = None, date: str | None = None,
+                        campaign: str | None = None, city: str | None = None,
+                        keyword: str | None = None) -> pd.DataFrame:
     """Platform league table with contribution share, rank and month-on-month growth.
 
     `period` defaults to the most recently loaded month. `compare_to="auto"` uses
@@ -225,12 +240,17 @@ def platform_comparison(engine=None, period: str | None = None,
     scope = " WHERE period_label = :period" if period else ""
     params = {"period": period} if period else {}
 
+    narrowed = bool(category or campaign or city or keyword)
     if date:
-        clause, dparams = _scope(category=category, date=date)
+        clause, dparams = _scope(category=category, date=date, campaign=campaign,
+                                 city=city, keyword=keyword)
         df = _read(engine, PLATFORM_TOTALS_SQL.format(clause=clause), **dparams)
         return _finish_platforms(engine, df, period, date=date)
-    if category:
-        clause, params = _scope(period, None, category)
+    if narrowed:
+        # platform_summary is a whole-platform roll-up with no entity columns, so any
+        # narrowing has to be computed from the fact table using the same definitions.
+        clause, params = _scope(period, None, category, campaign=campaign,
+                                city=city, keyword=keyword)
         df = _read(engine, PLATFORM_TOTALS_SQL.format(clause=clause), **params)
     else:
         df = _read(engine, "SELECT * FROM platform_summary" + scope, **params)
@@ -239,7 +259,8 @@ def platform_comparison(engine=None, period: str | None = None,
     # Some exports report impressions but no clicks (Blinkit's keyword, category and
     # product sheets). Averaging CTR/CPC/conversion over partial click data produces
     # numbers that look real and are not, so they are suppressed below 80% coverage.
-    cov_clause, cov_params = _scope(period, None, category)
+    cov_clause, cov_params = _scope(period, None, category, campaign=campaign,
+                                    city=city, keyword=keyword)
     coverage = _read(engine, f"""
         SELECT platform,
                SUM(CASE WHEN clicks IS NOT NULL THEN spend ELSE 0 END) AS covered,
@@ -252,7 +273,9 @@ def platform_comparison(engine=None, period: str | None = None,
 
     # Billed totals win over summed breakdowns where the exports were incomplete.
     # Not applied to a category slice — the billing figures are whole-platform only.
-    if not category:
+    # A billed total is a whole-platform figure; applying it to a slice would attribute
+    # the entire platform's billing to one campaign.
+    if not narrowed:
         df = _apply_overrides(df, period)
     df["overridden"] = df["spend"] != df["tracked_spend"]
 
@@ -291,8 +314,9 @@ def platform_comparison(engine=None, period: str | None = None,
     df["growth_basis"] = None
 
     if baseline:
-        if category:
-            prev_clause, prev_params = _scope(baseline, None, category)
+        if narrowed:
+            prev_clause, prev_params = _scope(baseline, None, category, campaign=campaign,
+                                              city=city, keyword=keyword)
             previous = _read(engine, PLATFORM_TOTALS_SQL.format(clause=prev_clause),
                              **prev_params)
         else:
@@ -361,8 +385,11 @@ def platform_comparison(engine=None, period: str | None = None,
 
 
 def overall_kpis(engine=None, period: str | None = None,
-                 category: str | None = None, date: str | None = None) -> dict:
-    df = platform_comparison(engine, period, category=category, date=date)
+                 category: str | None = None, date: str | None = None,
+                 campaign: str | None = None, city: str | None = None,
+                 keyword: str | None = None) -> dict:
+    df = platform_comparison(engine, period, category=category, date=date,
+                             campaign=campaign, city=city, keyword=keyword)
     if df.empty:
         return {}
     spend = df["spend"].sum()
