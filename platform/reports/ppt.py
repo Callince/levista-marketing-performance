@@ -19,6 +19,7 @@ import config
 from analytics import insights as ai
 from analytics import metrics
 from db.models import alerts, get_engine, insights as insights_table, recommendations
+from reports.columns import COLUMNS
 
 BRAND = RGBColor(0x1F, 0x3B, 0x4D)
 ACCENT = RGBColor(0x6F, 0x4E, 0x37)
@@ -137,16 +138,41 @@ def _chart(slide, kind, categories, series: dict, left, top, width, height,
     return chart
 
 
-def _table(slide, df, columns, left, top, width, height, formatters=None):
+def visible(df, spec):
+    """Spec columns this slice actually has data for.
+
+    Same rule as the workbook: a platform that does not report add-to-cart should not
+    get a column of dashes — on a slide that is the difference between a table that
+    fits and one that does not.
+    """
+    return [(h, f) for h, f in spec if f in df.columns and df[f].notna().any()]
+
+
+def _table(slide, df, columns, left, top, width, height, formatters=None,
+           name_col=None):
     formatters = formatters or {}
     rows = len(df) + 1
     shape = slide.shapes.add_table(rows, len(columns), left, top, width, height)
     table = shape.table
+
+    # The full spec runs to 14 columns. At a fixed 10pt that overflows the slide, so
+    # type shrinks as columns are added, and the name column keeps the width it needs
+    # while the numeric ones share what is left.
+    n = len(columns)
+    head_pt = 11 if n <= 6 else 9 if n <= 10 else 8
+    body_pt = 10 if n <= 6 else 8 if n <= 10 else 7
+    if name_col is not None and n > 6:
+        wide = int(width * 0.26)
+        rest = int((width - wide) / (n - 1))
+        for c in range(n):
+            table.columns[c].width = wide if c == name_col else rest
+
     for c, (header, _) in enumerate(columns):
         cell = table.cell(0, c)
         cell.text = header
+        cell.margin_left = cell.margin_right = Inches(0.03)
         para = cell.text_frame.paragraphs[0]
-        para.runs[0].font.size = Pt(11)
+        para.runs[0].font.size = Pt(head_pt)
         para.runs[0].font.bold = True
         para.runs[0].font.color.rgb = WHITE
         cell.fill.solid()
@@ -157,8 +183,9 @@ def _table(slide, df, columns, left, top, width, height, formatters=None):
             text = formatters.get(field, lambda v: "—" if v is None or pd.isna(v) else str(v))(value)
             cell = table.cell(r, c)
             cell.text = text
+            cell.margin_left = cell.margin_right = Inches(0.03)
             para = cell.text_frame.paragraphs[0]
-            para.runs[0].font.size = Pt(10)
+            para.runs[0].font.size = Pt(body_pt)
             if field == "roas" and pd.notna(value):
                 para.runs[0].font.color.rgb = (
                     GREEN if value >= config.HEALTHY_ROAS
@@ -190,6 +217,8 @@ def f_text(v):
 
 FMT = {"spend": f_money, "revenue": f_money, "impact_value": f_money, "value": f_money,
        "orders": f_int, "units": f_int, "impressions": f_int, "clicks": f_int,
+       "atc": f_int, "new_users": f_int, "cpm": f_money, "cpc": f_money,
+       "product_id": f_text, "product_name": f_text, "match_type": f_text,
        "roas": f_roas, "ctr": f_pct, "conv_rate": f_pct, "revenue_share": f_pct,
        "campaign_name": f_text, "product_name": f_text, "keyword": f_text,
        "city": f_text, "entity_name": f_text, "platform": f_text, "action": f_text,
@@ -383,10 +412,8 @@ def _platform_slide(prs, engine, platform, period):
 
     campaigns = metrics.collapse(metrics.campaigns(engine, platform=platform), "campaign")
     if not campaigns.empty:
-        _table(slide, campaigns.head(6),
-               [("Top campaigns", "campaign_name"), ("Spend", "spend"),
-                ("Revenue", "revenue"), ("ROAS", "roas")],
-               MARGIN, top, Inches(7.0), Inches(2.6), FMT)
+        _table(slide, campaigns.head(6), visible(campaigns, COLUMNS["campaign"]),
+               MARGIN, top, W - 2 * MARGIN, Inches(2.6), FMT, name_col=0)
 
     narrative = ai.load(engine, insights_table)
     story = narrative[narrative["platform"] == platform]
@@ -415,12 +442,28 @@ def _entity_slide(prs, engine, title, subtitle, df, columns, chart_label, chart_
               size=16, color=RED)
         return
     top = df.head(10)
-    _table(slide, top, columns, MARGIN, Inches(1.5), Inches(7.4), Inches(4.6), FMT)
-    labels = [str(v)[:22] for v in top[chart_label]]
-    _chart(slide, XL_CHART_TYPE.BAR_CLUSTERED, labels[::-1],
-           {chart_value.title(): list(top[chart_value])[::-1]},
-           Inches(8.1), Inches(1.5), Inches(4.7), Inches(4.6),
-           title=f"{chart_value.title()} — top 10", legend=False)
+    cols = visible(top, columns)
+    # The spec's tables are too wide to sit beside a chart, so the table takes the
+    # full slide width and the chart goes under it.
+    wide = len(cols) > 6
+    name_col = next((i for i, (_, f) in enumerate(cols)
+                     if f in ("campaign_name", "product_name", "keyword", "city")), None)
+    if wide:
+        _table(slide, top, cols, MARGIN, Inches(1.45), W - 2 * MARGIN, Inches(3.5),
+               FMT, name_col=name_col)
+        labels = [str(v)[:22] for v in top[chart_label]]
+        _chart(slide, XL_CHART_TYPE.COLUMN_CLUSTERED, labels,
+               {chart_value.title(): list(top[chart_value])},
+               MARGIN, Inches(5.15), W - 2 * MARGIN, Inches(2.0),
+               title=f"{chart_value.title()} — top 10", legend=False)
+    else:
+        _table(slide, top, cols, MARGIN, Inches(1.5), Inches(7.4), Inches(4.6), FMT,
+               name_col=name_col)
+        labels = [str(v)[:22] for v in top[chart_label]]
+        _chart(slide, XL_CHART_TYPE.BAR_CLUSTERED, labels[::-1],
+               {chart_value.title(): list(top[chart_value])[::-1]},
+               Inches(8.1), Inches(1.5), Inches(4.7), Inches(4.6),
+               title=f"{chart_value.title()} — top 10", legend=False)
 
 
 def _campaign_extremes(prs, engine, best: bool):
@@ -435,10 +478,9 @@ def _campaign_extremes(prs, engine, best: bool):
         _text(box.text_frame, ["No campaign data available."], size=16, color=RED)
         return
     df = df.sort_values("roas", ascending=not best, na_position="last").head(10)
-    _table(slide, df,
-           [("Platform", "platform"), ("Campaign", "campaign_name"), ("Spend", "spend"),
-            ("Revenue", "revenue"), ("Orders", "orders"), ("ROAS", "roas")],
-           MARGIN, Inches(1.5), W - 2 * MARGIN, Inches(4.4), FMT)
+    cols = [("Platform", "platform")] + visible(df, COLUMNS["campaign"])
+    _table(slide, df, cols, MARGIN, Inches(1.5), W - 2 * MARGIN, Inches(4.4), FMT,
+           name_col=1)
     box = slide.shapes.add_textbox(MARGIN, Inches(6.2), W - 2 * MARGIN, Inches(0.9))
     if best:
         _text(box.text_frame, [
@@ -621,19 +663,16 @@ def build(engine=None, path=None, period_label=None):
     _entity_slide(prs, engine, "Product Performance",                    # 12
                   "Best selling advertised products across all platforms",
                   metrics.collapse(metrics.products(engine), "product", ["platform"]),
-                  [("Platform", "platform"), ("Product", "product_name"),
-                   ("Spend", "spend"), ("Revenue", "revenue"), ("ROAS", "roas")],
+                  [("Platform", "platform")] + COLUMNS["product"],
                   "product_name")
     _entity_slide(prs, engine, "Keyword Performance",                    # 13
                   "The search terms driving the most revenue",
                   metrics.collapse(metrics.keywords(engine), "keyword", ["platform"]),
-                  [("Platform", "platform"), ("Keyword", "keyword"), ("Spend", "spend"),
-                   ("Revenue", "revenue"), ("ROAS", "roas")], "keyword")
+                  [("Platform", "platform")] + COLUMNS["keyword"], "keyword")
     _entity_slide(prs, engine, "City Performance",                       # 14
                   "Where in India the sales are coming from",
                   metrics.collapse(metrics.cities(engine), "city", ["platform"]),
-                  [("Platform", "platform"), ("City", "city"), ("Spend", "spend"),
-                   ("Revenue", "revenue"), ("ROAS", "roas")], "city")
+                  [("Platform", "platform")] + COLUMNS["city"], "city")
 
     _campaign_extremes(prs, engine, best=True)                           # 15
     _campaign_extremes(prs, engine, best=False)                          # 16

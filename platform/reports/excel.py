@@ -25,6 +25,7 @@ import config
 from analytics import insights as ai
 from analytics import metrics
 from db.models import alerts, anomalies, get_engine, recommendations, uploaded_files
+from reports.columns import COLUMNS
 
 # ---------------------------------------------------------------- styling
 BRAND = "1F3B4D"
@@ -65,33 +66,6 @@ FORMATS = {
 SUMMABLE = {"impressions", "clicks", "orders", "units", "atc", "new_users",
             "spend", "revenue", "budget"}
 
-# Column spec per entity type. Empty columns are dropped per platform, so one
-# spec covers every platform's variant of the same report.
-COLUMNS = {
-    # Exactly the columns Levista's report specifies, in the order specified. Anything
-    # a platform does not supply is dropped per block rather than printed empty, so a
-    # sheet never shows a column of dashes.
-    "campaign": [("Campaign Name", "campaign_name"), ("Impressions", "impressions"),
-                 ("Clicks", "clicks"), ("Spends", "spend"), ("Orders", "orders"),
-                 ("Revenue", "revenue"), ("ROAS", "roas"), ("CPM", "cpm"),
-                 ("CPC", "cpc"), ("CTR", "ctr"), ("ATC", "atc"),
-                 ("New to brand(purchase)", "new_users")],
-    "product": [("Product ID", "product_id"), ("Product Name", "product_name"),
-                ("Impressions", "impressions"), ("Clicks", "clicks"),
-                ("Ad Spend", "spend"), ("Units Sold", "units"),
-                ("Add to Cart", "atc"), ("Revenue", "revenue"), ("ROAS", "roas"),
-                ("CPM", "cpm"), ("CPC", "cpc"), ("CTR", "ctr")],
-    "city": [("City Name", "city"), ("Impressions", "impressions"),
-             ("Clicks", "clicks"), ("Spend", "spend"), ("Orders", "orders"),
-             ("Add to Cart", "atc"), ("Revenue", "revenue"), ("ROAS", "roas"),
-             ("CPM", "cpm"), ("CPC", "cpc"), ("CTR", "ctr")],
-    "keyword": [("Campaign Name", "campaign_name"), ("Keywords", "keyword"),
-                ("Match Type", "match_type"), ("Impression", "impressions"),
-                ("Clicks", "clicks"), ("Spend", "spend"), ("Order", "orders"),
-                ("Add to Cart", "atc"), ("Revenue", "revenue"), ("ROAS", "roas"),
-                ("CPM", "cpm"), ("CPC", "cpc"), ("CTR", "ctr"),
-                ("New Users", "new_users")],
-}
 
 # Plain-English glossary shown beside the KPIs — the audience is category and
 # brand managers, not analysts.
