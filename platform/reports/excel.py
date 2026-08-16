@@ -55,7 +55,8 @@ NUM2 = '0.00'
 
 FORMATS = {
     "impressions": INT, "clicks": INT, "orders": INT, "units": INT, "atc": INT,
-    "new_users": INT, "spend": MONEY, "revenue": MONEY, "budget": MONEY,
+    "new_users": INT,
+ "spend": MONEY, "revenue": MONEY, "budget": MONEY,
     "cpc": MONEY2, "cpm": MONEY2, "ctr": PCT, "conv_rate": PCT, "roas": NUM2,
     "revenue_share": PCT, "spend_share": PCT, "clicks_coverage": PCT,
     "revenue_growth": PCT, "spend_growth": PCT, "orders_growth": PCT, "roas_change": NUM2,
@@ -67,24 +68,29 @@ SUMMABLE = {"impressions", "clicks", "orders", "units", "atc", "new_users",
 # Column spec per entity type. Empty columns are dropped per platform, so one
 # spec covers every platform's variant of the same report.
 COLUMNS = {
-    "campaign": [("Campaign", "campaign_name"), ("Ad Type", "ad_type"),
-                 ("Impressions", "impressions"), ("Clicks", "clicks"), ("CTR", "ctr"),
-                 ("Spend", "spend"), ("CPC", "cpc"), ("CPM", "cpm"),
-                 ("Orders", "orders"), ("Units Sold", "units"),
-                 ("Revenue", "revenue"), ("ROAS", "roas"), ("Conv. Rate", "conv_rate")],
-    "product": [("Product", "product_name"), ("Product ID", "product_id"),
-                ("Impressions", "impressions"), ("Clicks", "clicks"), ("CTR", "ctr"),
-                ("Spend", "spend"), ("CPC", "cpc"), ("CPM", "cpm"),
-                ("Add to Cart", "atc"), ("Orders", "orders"), ("Units Sold", "units"),
-                ("Revenue", "revenue"), ("ROAS", "roas"), ("Conv. Rate", "conv_rate")],
-    "keyword": [("Campaign", "campaign_name"), ("Keyword", "keyword"),
-                ("Match Type", "match_type"), ("Impressions", "impressions"),
-                ("Clicks", "clicks"), ("CTR", "ctr"), ("Spend", "spend"), ("CPC", "cpc"),
-                ("Orders", "orders"), ("Revenue", "revenue"), ("ROAS", "roas"),
-                ("Conv. Rate", "conv_rate")],
-    "city": [("City", "city"), ("Impressions", "impressions"), ("Clicks", "clicks"),
-             ("Spend", "spend"), ("Add to Cart", "atc"), ("Orders", "orders"),
-             ("Revenue", "revenue"), ("ROAS", "roas"), ("Conv. Rate", "conv_rate")],
+    # Exactly the columns Levista's report specifies, in the order specified. Anything
+    # a platform does not supply is dropped per block rather than printed empty, so a
+    # sheet never shows a column of dashes.
+    "campaign": [("Campaign Name", "campaign_name"), ("Impressions", "impressions"),
+                 ("Clicks", "clicks"), ("Spends", "spend"), ("Orders", "orders"),
+                 ("Revenue", "revenue"), ("ROAS", "roas"), ("CPM", "cpm"),
+                 ("CPC", "cpc"), ("CTR", "ctr"), ("ATC", "atc"),
+                 ("New to brand(purchase)", "new_users")],
+    "product": [("Product ID", "product_id"), ("Product Name", "product_name"),
+                ("Impressions", "impressions"), ("Clicks", "clicks"),
+                ("Ad Spend", "spend"), ("Units Sold", "units"),
+                ("Add to Cart", "atc"), ("Revenue", "revenue"), ("ROAS", "roas"),
+                ("CPM", "cpm"), ("CPC", "cpc"), ("CTR", "ctr")],
+    "city": [("City Name", "city"), ("Impressions", "impressions"),
+             ("Clicks", "clicks"), ("Spend", "spend"), ("Orders", "orders"),
+             ("Add to Cart", "atc"), ("Revenue", "revenue"), ("ROAS", "roas"),
+             ("CPM", "cpm"), ("CPC", "cpc"), ("CTR", "ctr")],
+    "keyword": [("Campaign Name", "campaign_name"), ("Keywords", "keyword"),
+                ("Match Type", "match_type"), ("Impression", "impressions"),
+                ("Clicks", "clicks"), ("Spend", "spend"), ("Order", "orders"),
+                ("Add to Cart", "atc"), ("Revenue", "revenue"), ("ROAS", "roas"),
+                ("CPM", "cpm"), ("CPC", "cpc"), ("CTR", "ctr"),
+                ("New Users", "new_users")],
 }
 
 # Plain-English glossary shown beside the KPIs — the audience is category and
@@ -422,24 +428,25 @@ def _raw_summary_sheet(wb, engine, period):
 
 # ---------------------------------------------------------------- entry point
 
+# Every platform gets each report type it can produce, in the order Levista's spec
+# lists them. Campaign first: it is the platform's full billed total, and four
+# platforms previously had no campaign sheet at all, so an uploaded campaign report
+# appeared only in the cross-platform sheet.
+PLATFORM_SHEETS = {
+    "Amazon":    ["campaign", "product", "keyword"],
+    "Flipkart":  ["campaign", "product", "keyword"],
+    # Only Instamart and Zepto report a city dimension.
+    "Instamart": ["campaign", "product", "city", "keyword"],
+    "Zepto":     ["campaign", "product", "city", "keyword"],
+    "BigBasket": ["campaign", "product", "keyword"],
+    "Blinkit":   ["campaign", "product", "keyword"],
+}
+
 SHEET_PLAN = [
-    # (sheet name, platform, entity, "what is missing" wording)
-    ("Amazon Product Report", "Amazon", "product", "no Amazon product report in the input folder"),
-    ("Amazon Keyword Report", "Amazon", "keyword", "no Amazon keyword report in the input folder"),
-    ("Amazon Campaign Report", "Amazon", "campaign", "no Amazon campaign report in the input folder"),
-    ("Flipkart Product Report", "Flipkart", "product", "no Flipkart product report in the input folder"),
-    ("Flipkart Keyword Report", "Flipkart", "keyword", "no Flipkart keyword report in the input folder"),
-    ("Flipkart Campaign Report", "Flipkart", "campaign", "no Flipkart campaign report in the input folder"),
-    ("Instamart Product Report", "Instamart", "product", "no Instamart product report in the input folder"),
-    ("Instamart Keyword Report", "Instamart", "keyword", "no Instamart keyword report in the input folder"),
-    ("Instamart City Report", "Instamart", "city", "no Instamart city report in the input folder"),
-    ("BigBasket Product Report", "BigBasket", "product", "no BigBasket product report in the input folder"),
-    ("BigBasket Keyword Report", "BigBasket", "keyword", "no BigBasket keyword report in the input folder"),
-    ("Zepto Product Report", "Zepto", "product", "no Zepto product report in the input folder"),
-    ("Zepto Keyword Report", "Zepto", "keyword", "no Zepto keyword report in the input folder"),
-    ("Zepto City Report", "Zepto", "city", "no Zepto city report in the input folder"),
-    ("Blinkit Product Report", "Blinkit", "product", "no Blinkit product report in the input folder"),
-    ("Blinkit Keyword Report", "Blinkit", "keyword", "no Blinkit keyword report in the input folder"),
+    (f"{platform} {entity.capitalize()} Report", platform, entity,
+     f"no {platform} {entity} report in the input folder")
+    for platform, entities in PLATFORM_SHEETS.items()
+    for entity in entities
 ]
 
 FETCHERS = {"product": metrics.products, "keyword": metrics.keywords,

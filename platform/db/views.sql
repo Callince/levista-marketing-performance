@@ -9,7 +9,8 @@ SELECT period_label, platform, sub_platform, ad_type, category,
        MIN(period_start) AS period_start, MAX(period_end) AS period_end,
        SUM(impressions) AS impressions, SUM(clicks) AS clicks,
        SUM(spend) AS spend, SUM(revenue) AS revenue,
-       SUM(orders) AS orders, SUM(units) AS units, SUM(atc) AS atc
+       SUM(orders) AS orders, SUM(units) AS units, SUM(atc) AS atc,
+       SUM(new_users) AS new_users
 FROM performance_metrics
 WHERE is_primary AND COALESCE(campaign_name, campaign_id) IS NOT NULL
 GROUP BY period_label, platform, sub_platform, ad_type, category, COALESCE(campaign_name, campaign_id);
@@ -20,7 +21,8 @@ SELECT period_label, platform, sub_platform, category, keyword, match_type,
        MAX(campaign_name) AS campaign_name,
        SUM(impressions) AS impressions, SUM(clicks) AS clicks,
        SUM(spend) AS spend, SUM(revenue) AS revenue,
-       SUM(orders) AS orders, SUM(units) AS units
+       SUM(orders) AS orders, SUM(units) AS units, SUM(atc) AS atc,
+       SUM(new_users) AS new_users
 FROM performance_metrics
 WHERE keyword IS NOT NULL
 GROUP BY period_label, platform, sub_platform, category, keyword, match_type;
@@ -109,35 +111,44 @@ GROUP BY period_label, platform;
 
 DROP VIEW IF EXISTS product_summary;
 CREATE VIEW product_summary AS
-SELECT period_label, platform, category, product_name, product_id, impressions, clicks, spend, revenue, orders, units,
+SELECT period_label, platform, category, product_name, product_id,
+       impressions, clicks, spend, revenue, orders, units, atc,
        CASE WHEN spend > 0 THEN revenue / spend END AS roas,
-       CASE WHEN impressions > 0 THEN clicks / impressions END AS ctr,
-       CASE WHEN clicks > 0 THEN orders / clicks END AS conv_rate
+       CASE WHEN impressions > 0 THEN clicks * 1.0 / impressions END AS ctr,
+       CASE WHEN clicks > 0 THEN spend / clicks END AS cpc,
+       CASE WHEN impressions > 0 THEN spend / impressions * 1000 END AS cpm,
+       CASE WHEN clicks > 0 THEN orders * 1.0 / clicks END AS conv_rate
 FROM products;
 
 DROP VIEW IF EXISTS keyword_summary;
 CREATE VIEW keyword_summary AS
-SELECT period_label, platform, category, keyword, match_type, campaign_name, impressions, clicks, spend, revenue, orders,
+SELECT period_label, platform, category, keyword, match_type, campaign_name,
+       impressions, clicks, spend, revenue, orders, units, atc, new_users,
        CASE WHEN spend > 0 THEN revenue / spend END AS roas,
-       CASE WHEN impressions > 0 THEN clicks / impressions END AS ctr,
+       CASE WHEN impressions > 0 THEN clicks * 1.0 / impressions END AS ctr,
        CASE WHEN clicks > 0 THEN spend / clicks END AS cpc,
-       CASE WHEN clicks > 0 THEN orders / clicks END AS conv_rate
+       CASE WHEN impressions > 0 THEN spend / impressions * 1000 END AS cpm,
+       CASE WHEN clicks > 0 THEN orders * 1.0 / clicks END AS conv_rate
 FROM keywords;
 
 DROP VIEW IF EXISTS city_summary;
 CREATE VIEW city_summary AS
-SELECT period_label, platform, category, city, impressions, clicks, spend, revenue, orders,
+SELECT period_label, platform, category, city,
+       impressions, clicks, spend, revenue, orders, atc,
        CASE WHEN spend > 0 THEN revenue / spend END AS roas,
-       CASE WHEN clicks > 0 THEN orders / clicks END AS conv_rate
+       CASE WHEN impressions > 0 THEN clicks * 1.0 / impressions END AS ctr,
+       CASE WHEN clicks > 0 THEN spend / clicks END AS cpc,
+       CASE WHEN impressions > 0 THEN spend / impressions * 1000 END AS cpm,
+       CASE WHEN clicks > 0 THEN orders * 1.0 / clicks END AS conv_rate
 FROM cities;
 
 DROP VIEW IF EXISTS campaign_summary;
 CREATE VIEW campaign_summary AS
 SELECT period_label, platform, sub_platform, ad_type, category, campaign_name,
-       impressions, clicks, spend, revenue, orders, units,
+       impressions, clicks, spend, revenue, orders, units, atc, new_users,
        CASE WHEN spend > 0 THEN revenue / spend END AS roas,
-       CASE WHEN impressions > 0 THEN clicks / impressions END AS ctr,
+       CASE WHEN impressions > 0 THEN clicks * 1.0 / impressions END AS ctr,
        CASE WHEN clicks > 0 THEN spend / clicks END AS cpc,
        CASE WHEN impressions > 0 THEN spend / impressions * 1000 END AS cpm,
-       CASE WHEN clicks > 0 THEN orders / clicks END AS conv_rate
+       CASE WHEN clicks > 0 THEN orders * 1.0 / clicks END AS conv_rate
 FROM campaigns;

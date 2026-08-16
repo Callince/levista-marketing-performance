@@ -482,7 +482,8 @@ def categories_for(df: pd.DataFrame) -> list:
     return present or [None]
 
 
-SUM_FIELDS = ["impressions", "clicks", "spend", "revenue", "orders", "units", "atc"]
+SUM_FIELDS = ["impressions", "clicks", "spend", "revenue", "orders", "units", "atc",
+              "new_users"]
 ENTITY_KEYS = {
     "campaign": ["campaign_name"],
     "product": ["product_name"],
