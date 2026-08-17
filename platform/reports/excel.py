@@ -412,7 +412,7 @@ PLATFORM_SHEETS = {
     # Only Instamart and Zepto report a city dimension.
     "Instamart": ["campaign", "product", "city", "keyword"],
     "Zepto":     ["campaign", "product", "city", "keyword"],
-    "BigBasket": ["campaign", "product", "keyword"],
+    "BigBasket": ["product", "keyword"],      # no campaign report exists
     "Blinkit":   ["campaign", "product", "keyword"],
 }
 

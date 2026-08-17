@@ -451,7 +451,10 @@ PRIMARY_PRIORITY = {
     "Flipkart": ["campaign", "product"],
     "Instamart": ["campaign", "product", "city"],
     "Zepto": ["campaign", "product"],
-    "BigBasket": ["campaign", "product"],
+    # BigBasket publishes no campaign report at all — only product and keyword.
+    # Listing campaign first left it permanently "partial", implying a missing
+    # file that is never coming. Product is its most complete export.
+    "BigBasket": ["product", "keyword"],
     "Blinkit": [],
 }
 
