@@ -32,3 +32,9 @@ COLUMNS = {
                 ("CPM", "cpm"), ("CPC", "cpc"), ("CTR", "ctr"),
                 ("New Users", "new_users")],
 }
+
+
+# Columns kept even when the platform supplies nothing for them, so the report has the
+# same shape everywhere. Product ID is here because a reader comparing platforms
+# should see that BigBasket has no ID rather than find the column silently missing.
+ALWAYS_SHOW = {"product_id"}

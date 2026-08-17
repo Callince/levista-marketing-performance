@@ -25,7 +25,7 @@ import config
 from analytics import insights as ai
 from analytics import metrics
 from db.models import alerts, anomalies, get_engine, recommendations, uploaded_files
-from reports.columns import COLUMNS
+from reports.columns import ALWAYS_SHOW, COLUMNS
 
 # ---------------------------------------------------------------- styling
 BRAND = "1F3B4D"
@@ -117,10 +117,15 @@ def _no_data(ws, row: int, what: str) -> int:
 
 
 def _visible_columns(df: pd.DataFrame, spec: list) -> list:
-    """Drop spec columns absent or entirely empty for this slice of data."""
+    """Drop spec columns this slice has no data for — except those in ALWAYS_SHOW.
+
+    A column that is empty everywhere is noise, but Product ID is worth keeping even
+    when blank: BigBasket's export carries no product ID, and a reader comparing
+    platforms should see that gap rather than wonder where the column went.
+    """
     out = []
     for header, field in spec:
-        if field in df.columns and df[field].notna().any():
+        if field in ALWAYS_SHOW or (field in df.columns and df[field].notna().any()):
             out.append((header, field))
     return out
 
