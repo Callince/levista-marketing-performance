@@ -391,11 +391,18 @@ SIGNATURES: list[Signature] = [
         orders_from_units=True,
     ),
     Signature(
-        key="blinkit_product", platform="Blinkit", report_type="product", entity_type="product",
+        # Blinkit's "Product Recommendation" sheet is an ad-placement report, not a
+        # product one: Asset is the recommendation slot ("Next Product
+        # Recommendations") and Title is "#-NA". Mapping those to product_id and
+        # product_name put the placement name in the Product ID column and "#-NA" in
+        # Product Name. There is no product identifier anywhere in this export, so it
+        # is filed as what it is — a placement report.
+        key="blinkit_placement", platform="Blinkit", report_type="placement",
+        entity_type="placement",
         required=frozenset({"title", "asset", "estimated budget consumed", "direct sales"}),
         colmap=_m(
             date="date_ist", campaign_id="Campaign ID", campaign_name="Campaign Name",
-            product_name="Title", product_id="Asset", cpm_reported="CPM",
+            placement="Asset", cpm_reported="CPM",
             budget="Total Budget", impressions="Impressions",
             atc=["Direct ATC", "Indirect ATC"], new_users="New Users",
             direct_revenue="Direct Sales", indirect_revenue="Indirect Sales",
@@ -457,7 +464,7 @@ PRIMARY_PRIORITY = {
 # rather than being a separate ad product, so it double-counted National. National
 # total = campaign only. Re-add here only if a placement report is ever a distinct spend.
 ADDITIVE_REPORTS = {
-    "Blinkit": {"keyword", "category", "product", "campaign"},
+    "Blinkit": {"keyword", "category", "placement", "campaign"},
 }
 
 
